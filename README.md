@@ -1,10 +1,13 @@
 # UMVP: Unified Metrology Verification Portal
 
 ## 📋 Overview
+
 **UMVP (Unified Metrology Verification Portal)** is a secure, web-based platform developed for the Legal Metrology Department under the **Ministry of Consumer Affairs, Food & Public Distribution**. It digitizes the end-to-end workflow mandated by the **Legal Metrology Act, 2009**, replacing manual verification processes with automated scheduling, digital inspections, and QR-enabled certification.
 
 ## 🎯 Purpose
+
 To improve transparency, efficiency, and ease of compliance within the Legal Metrology ecosystem by providing a unified digital platform for:
+
 - Online registration & verification applications
 - Automated scheduling & allocation to Legal Metrology Officers (LMOs)
 - Digital inspection recording & certificate generation
@@ -12,6 +15,7 @@ To improve transparency, efficiency, and ease of compliance within the Legal Met
 - Mobile-enabled field verification activities
 
 ## 🏛️ Key Stakeholders
+
 - **Department of Consumer Affairs (DoCA)** – Central administration
 - **State Legal Metrology Departments** – State-level enforcement
 - **Legal Metrology Officers (LMOs)** – Inspection & verification officers
@@ -19,43 +23,53 @@ To improve transparency, efficiency, and ease of compliance within the Legal Met
 - **Instrument Users** – Businesses & individuals requiring verification
 
 ## ✨ Core Features
+
 ### **Workflow Automation**
+
 - Online application submission for verification/re-verification
 - Automated scheduling & allocation to nearest available LMO/GATC
 - Re-verification reminders & expiry alerts
 
 ### **Digital Certification**
+
 - QR-enabled digital verification certificates
 - Tamper-proof certificate authentication system
 - Centralized repository accessible to regulators & consumers
 
 ### **Field Operations**
+
 - Mobile application for LMOs with offline capability
 - Geotagged photo uploads & digital observation recording
 - Real-time sync of field data
 
 ### **Monitoring & Compliance**
+
 - Role-based dashboards for users, LMOs, GATCs, and administrators
 - Real-time pendency tracking & enforcement monitoring
 - Analytics & report generation
 
 ## 🛠️ Tech Stack (Proposed)
+
 ### **Frontend**
+
 - **Next.js 14+** – React framework with App Router
 - **TypeScript** – Type safety & maintainability
 - **Tailwind CSS** – Utility-first styling
 - **Shadcn/ui** – Accessible component library
 
 ### **Backend**
+
 - **Python FastAPI** – High-performance API framework
 - **PostgreSQL** – Primary database for relational integrity
 - **Redis** – Caching & session management
 
 ### **Mobile**
+
 - **React Native** – Cross-platform mobile application
 - **Expo** – Development & deployment framework
 
 ### **DevOps & Infrastructure**
+
 - **Docker** – Containerization
 - **Kubernetes** – Orchestration & scaling
 - **Nginx** – Reverse proxy & load balancing
@@ -117,12 +131,14 @@ umvp-core/
 ## 🔧 Getting Started
 
 ### Prerequisites
+
 - Node.js 18+ & npm
 - Python 3.10+
 - Docker & Docker Compose
 - PostgreSQL 14+
 
 ### Development Setup
+
 ```bash
 # Clone the repository
 git clone https://github.com/DoCA/UMVP-Core.git
@@ -161,6 +177,6 @@ We welcome contributions from Government Approved Test Centres (GATCs), State Le
 Department: Department of Consumer Affairs (DoCA)
 Ministry: Ministry of Consumer Affairs, Food & Public Distribution
 Technical Issues: Create a GitHub Issue
-Policy Queries:  legalmetrology.doca@gov.in
-Developed by: Sapphire (A Student Innovative Collective from MJCET, Hyderabad) 
+Policy Queries:  <legalmetrology.doca@gov.in>
+Developed by: Sapphire (A Student Innovative Collective from MJCET, Hyderabad)
 Implemented under: Digital India Initiative, Department of Consumer Affairs, Government of India
