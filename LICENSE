@@ -1,4 +1,50 @@
-MIT License
+## LICENSE (MIT + OGL)
+
+#MIT License
+
+Copyright (c) 2026 Department of Consumer Affairs, Government of India
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+#INDIA OPEN GOVERNMENT LICENSE (OGL)
+
+This work is also licensed under the India Open Government License, 
+which ensures:
+
+1. This work may be used, reused, and shared by anyone for lawful purposes.
+2. Attribution must be given to "Department of Consumer Affairs, Government of India".
+3. Commercial use is permitted.
+4. No warranty or liability is provided by the Government of India.
+5. This license does not limit the rights of citizens under the Right to Information Act, 2005.
+
+For the full text of the India OGL, visit: 
+https://data.gov.in/government-open-data-license-india
+
+---
+
+Note: This software handles verification data under the Legal Metrology Act, 2009.
+All verification certifications remain legally binding official documents.
+Implementation at state level requires coordination with respective State Legal Metrology Departments.
+
+
 
 Copyright (c) 2026 Sapphire
 
