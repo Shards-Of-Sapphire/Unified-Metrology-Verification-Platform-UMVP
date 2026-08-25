@@ -126,7 +126,6 @@ umvp-core/
 ```bash
 # Clone the repository
 git clone https://github.com/DoCA/UMVP-Core.git
-cd UMVP-Core
 
 # Install dependencies
 npm install
@@ -140,6 +139,7 @@ npm run db:migrate
 # Start development server
 npm run dev
 ```
+
 📄 Legal Framework
 This system complies with:
 
