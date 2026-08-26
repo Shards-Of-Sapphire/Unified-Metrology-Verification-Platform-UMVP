@@ -178,5 +178,34 @@ Department: Department of Consumer Affairs (DoCA)
 Ministry: Ministry of Consumer Affairs, Food & Public Distribution
 Technical Issues: Create a GitHub Issue
 Policy Queries:  <legalmetrology.doca@gov.in>
+
+## Backend implementation
+
+The PostgreSQL model in `prisma/schema.prisma` covers department workspaces, users, roles, permissions, applicants, instruments, applications, document verification, test centres, inspections, geotagged evidence, certificates, reports, and audit events. Operational records are scoped to a `Workspace`, with indexes for role-filtered queues.
+
+Copy `.env.example` to `.env`, set `DATABASE_URL`, then run:
+
+```bash
+npm install
+npm run db:generate
+npm run db:migrate -- --name initial
+npm run db:studio
+```
+
+Authentication resolves the signed-in user and workspace on the server. API handlers should derive `workspaceId` from the session, check `RolePermission`, and include the workspace in every query. Never accept a workspace or role from browser input. Passwords are stored as salted scrypt hashes in `passwordHash`; change the seeded password before deployment. Write `AuditEvent` records in the same transaction as status changes. Seed demo users with `npm run db:seed`.
+
+## Designing in Figma and connecting it to UMVP
+
+1. Create Figma pages for `Foundations`, `Components`, and `Screens`. Define color variables, typography, spacing, and variants first; use Auto Layout and responsive constraints for desktop and mobile frames.
+2. Name layers after implementation concepts such as `ApplicationTable`, `StatusPill`, and `CertificateLookup`. Document loading, empty, error, and permission-denied states. Figma should guide visual decisions, not replace application logic.
+3. Map screens to `/`, `/applications`, `/inspections`, `/certificates`, and `/reports`. Export only real assets to `public/`; implement layout and interactions in reusable React components.
+4. Use Figma Dev Mode for measured spacing, colors, and font properties, then compare the running page at the same viewport. Keep repeated Figma components aligned with shared React components.
+5. Connect data through server route handlers or server actions. Authorization stays in the backend; the UI receives filtered records. Keep UI status labels aligned with the Prisma enums and provide loading and empty states for every table.
+
+## Kubernetes basics
+
+Kubernetes runs the application as a group of managed containers. A `Deployment` keeps the desired number of UMVP web pods running and replaces failed pods. A `Service` gives those pods a stable internal address, while an `Ingress` exposes HTTPS traffic from the public domain. PostgreSQL should normally be a managed database, not an ephemeral pod; Kubernetes stores only the `DATABASE_URL` reference in a `Secret`. A `ConfigMap` can hold non-secret settings.
+
+The usual flow is: build the Next.js Docker image, push it to a registry, apply a Deployment and Service, create an Ingress with TLS, and run Prisma migrations as a release job before serving new code. Scale web pods horizontally when traffic rises; keep database connection pooling enabled because every pod can open connections. Use readiness probes so traffic reaches only ready pods, liveness probes to restart stuck pods, resource requests and limits, and backups/monitoring for PostgreSQL. Kubernetes does not provide application authorization: UMVP sessions, roles, permissions, and workspace filters still belong in the application and database.
 Developed by: Sapphire (A Student Innovative Collective from MJCET, Hyderabad)
 Implemented under: Digital India Initiative, Department of Consumer Affairs, Government of India

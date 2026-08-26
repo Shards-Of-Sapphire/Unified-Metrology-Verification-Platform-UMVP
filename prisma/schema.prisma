@@ -1,0 +1,238 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleCode { SUPER_ADMIN STATE_ADMIN DISTRICT_LMO GATC_MANAGER INSPECTOR APPLICANT AUDITOR }
+enum ApplicationStatus { DRAFT SUBMITTED DOCUMENT_REVIEW SCHEDULED INSPECTION REWORK APPROVED REJECTED EXPIRED }
+enum InspectionStatus { ASSIGNED IN_PROGRESS SUBMITTED REVIEWED }
+enum CertificateStatus { ACTIVE SUSPENDED REVOKED EXPIRED }
+enum ReportType { PENDENCY COMPLIANCE CERTIFICATE_ACTIVITY INSPECTION_PERFORMANCE }
+enum ReportStatus { QUEUED READY FAILED }
+
+model Workspace {
+  id            String        @id @default(cuid())
+  name          String
+  state         String
+  code          String        @unique
+  users         User[]
+  roles         Role[]
+  applications Application[]
+  testCentres   TestCentre[]
+  auditEvents   AuditEvent[]
+  reports       Report[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model User {
+  id            String         @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  roleId        String
+  role          Role           @relation(fields: [roleId], references: [id])
+  name          String
+  email         String
+  phone         String?
+  passwordHash  String
+  active        Boolean        @default(true)
+  applications Application[]   @relation("ApplicantApplications")
+  assigned      Inspection[]   @relation("AssignedInspections")
+  reviewed      Inspection[]   @relation("ReviewedInspections")
+  certificates  Certificate[]  @relation("IssuedCertificates")
+  reports       Report[]
+  auditEvents   AuditEvent[]
+  sessions      Session[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  @@unique([workspaceId, email])
+  @@index([workspaceId, roleId])
+}
+
+model Role {
+  id          String       @id @default(cuid())
+  workspaceId String
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  code        RoleCode
+  name        String
+  users       User[]
+  permissions RolePermission[]
+  @@unique([workspaceId, code])
+}
+
+model Permission {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  description String
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@id([roleId, permissionId])
+}
+
+model Applicant {
+  id            String        @id @default(cuid())
+  legalName     String
+  registrationNo String?
+  contactName   String
+  email         String
+  phone         String
+  address       String
+  applications Application[]
+  createdAt     DateTime      @default(now())
+}
+
+model Instrument {
+  id              String        @id @default(cuid())
+  serialNumber    String
+  category        String
+  manufacturer    String?
+  model           String?
+  capacity        String?
+  applications    Application[]
+  @@unique([serialNumber])
+}
+
+model Application {
+  id             String            @id @default(cuid())
+  referenceNo    String            @unique
+  workspaceId    String
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  applicantId    String
+  applicant      Applicant         @relation(fields: [applicantId], references: [id])
+  submittedById  String
+  submittedBy    User              @relation("ApplicantApplications", fields: [submittedById], references: [id])
+  instrumentId   String
+  instrument     Instrument         @relation(fields: [instrumentId], references: [id])
+  status         ApplicationStatus @default(DRAFT)
+  serviceType    String
+  submittedAt    DateTime?
+  dueAt          DateTime?
+  documents      ApplicationDocument[]
+  assignments    Inspection[]
+  certificate    Certificate?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  @@index([workspaceId, status])
+  @@index([workspaceId, dueAt])
+}
+
+model ApplicationDocument {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  documentType  String
+  fileKey       String
+  fileName      String
+  verified      Boolean     @default(false)
+  uploadedAt    DateTime    @default(now())
+}
+
+model TestCentre {
+  id            String       @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name          String
+  accreditationNo String      @unique
+  address       String
+  active        Boolean      @default(true)
+  inspections   Inspection[]
+}
+
+model Inspection {
+  id            String           @id @default(cuid())
+  applicationId String
+  application   Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  officerId     String
+  officer       User             @relation("AssignedInspections", fields: [officerId], references: [id])
+  reviewerId    String?
+  reviewer      User?            @relation("ReviewedInspections", fields: [reviewerId], references: [id])
+  testCentreId  String?
+  testCentre    TestCentre?      @relation(fields: [testCentreId], references: [id])
+  status        InspectionStatus @default(ASSIGNED)
+  scheduledAt   DateTime
+  startedAt     DateTime?
+  completedAt   DateTime?
+  observations  String?
+  passed        Boolean?
+  evidence     InspectionEvidence[]
+  createdAt     DateTime         @default(now())
+  @@index([officerId, status])
+}
+
+model InspectionEvidence {
+  id           String     @id @default(cuid())
+  inspectionId String
+  inspection   Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  fileKey      String
+  caption      String?
+  latitude     Decimal?   @db.Decimal(9, 6)
+  longitude    Decimal?   @db.Decimal(9, 6)
+  capturedAt   DateTime   @default(now())
+}
+
+model Certificate {
+  id            String            @id @default(cuid())
+  certificateNo String            @unique
+  applicationId String            @unique
+  application   Application       @relation(fields: [applicationId], references: [id])
+  issuerId      String
+  issuer        User              @relation("IssuedCertificates", fields: [issuerId], references: [id])
+  status        CertificateStatus @default(ACTIVE)
+  issuedAt      DateTime          @default(now())
+  validFrom     DateTime
+  validUntil    DateTime
+  qrPayload     String            @unique
+  revokedAt     DateTime?
+  @@index([status, validUntil])
+}
+
+model Report {
+  id          String       @id @default(cuid())
+  workspaceId String
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  requestedById String
+  requestedBy User         @relation(fields: [requestedById], references: [id])
+  type        ReportType
+  status      ReportStatus @default(QUEUED)
+  filters     Json?
+  fileKey     String?
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?
+  @@index([workspaceId, type, createdAt])
+}
+
+model AuditEvent {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actorId     String?
+  actor       User?     @relation(fields: [actorId], references: [id])
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime  @default(now())
+  @@index([workspaceId, entityType, entityId])
+  @@index([workspaceId, createdAt])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  tokenHash    String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  @@index([userId, expiresAt])
+}
