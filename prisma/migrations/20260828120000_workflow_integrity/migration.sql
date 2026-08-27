@@ -1,5 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS postgis;
-
 ALTER TABLE "User" ADD COLUMN "latitude" DECIMAL(9,6), ADD COLUMN "longitude" DECIMAL(9,6);
 
 ALTER TABLE "Applicant" ADD COLUMN "latitude" DECIMAL(9,6), ADD COLUMN "longitude" DECIMAL(9,6);

@@ -16,7 +16,7 @@ async function main() {
     for (const permissionCode of codes) { const permission = await db.permission.findUniqueOrThrow({ where: { code: permissionCode } }); await db.rolePermission.upsert({ where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } }, update: {}, create: { roleId: role.id, permissionId: permission.id } }); }
   }
   const accounts = [["admin@umvp.gov.in", "Ministry Admin", "SUPER_ADMIN"], ["lmo@umvp.gov.in", "Ananya Sharma", "DISTRICT_LMO"], ["inspector@umvp.gov.in", "Ravi Kumar", "INSPECTOR"], ["applicant@umvp.gov.in", "Demo Applicant", "APPLICANT"]] as const;
-  for (const [email, name, code] of accounts) { const role = await db.role.findUniqueOrThrow({ where: { workspaceId_code: { workspaceId: workspace.id, code } } }); await db.user.upsert({ where: { workspaceId_email: { workspaceId: workspace.id, email } }, update: { roleId: role.id, active: true }, create: { workspaceId: workspace.id, roleId: role.id, name, email, passwordHash: passwordHash("ChangeMe123!") } }); }
+  for (const [email, name, code] of accounts) { const role = await db.role.findUniqueOrThrow({ where: { workspaceId_code: { workspaceId: workspace.id, code } } }); await db.user.upsert({ where: { workspaceId_email: { workspaceId: workspace.id, email } }, update: { roleId: role.id, active: true, ...(code === "INSPECTOR" ? { latitude: 17.385, longitude: 78.4867 } : {}) }, create: { workspaceId: workspace.id, roleId: role.id, name, email, passwordHash: passwordHash("ChangeMe123!"), ...(code === "INSPECTOR" ? { latitude: 17.385, longitude: 78.4867 } : {}) } }); }
   const lmo = await db.user.findUniqueOrThrow({ where: { workspaceId_email: { workspaceId: workspace.id, email: "lmo@umvp.gov.in" } } });
   const inspector = await db.user.findUniqueOrThrow({ where: { workspaceId_email: { workspaceId: workspace.id, email: "inspector@umvp.gov.in" } } });
   const applicantData = [
@@ -58,7 +58,7 @@ async function main() {
     });
     applications.set(referenceNo, record.id);
   }
-  const testCentre = await db.testCentre.upsert({ where: { accreditationNo: "GATC-AP-001" }, update: {}, create: { workspaceId: workspace.id, name: "Hyderabad Government Approved Test Centre", accreditationNo: "GATC-AP-001", address: "Industrial Estate, Hyderabad" } });
+  const testCentre = await db.testCentre.upsert({ where: { accreditationNo: "GATC-AP-001" }, update: { latitude: 17.385, longitude: 78.4867 }, create: { workspaceId: workspace.id, name: "Hyderabad Government Approved Test Centre", accreditationNo: "GATC-AP-001", address: "Industrial Estate, Hyderabad", latitude: 17.385, longitude: 78.4867 } });
   const inspectionData = [["LM-24081", "ASSIGNED", "2026-08-25T10:30:00.000Z"], ["LM-24078", "ASSIGNED", "2026-08-25T14:00:00.000Z"], ["LM-24064", "REVIEWED", "2026-08-24T15:00:00.000Z"]] as const;
   for (const [referenceNo, status, scheduledAt] of inspectionData) {
     const existing = await db.inspection.findFirst({ where: { applicationId: applications.get(referenceNo)! } });
