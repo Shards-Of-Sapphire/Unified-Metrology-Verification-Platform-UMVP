@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 
@@ -50,15 +51,8 @@ export async function POST(request: Request) {
     if (existing) return NextResponse.json({ application: existing.application, inspection: existing, replayed: true }, { status: 200 });
   }
 
-  const centres = await db.testCentre.findMany({ where: { workspaceId: user.workspaceId, active: true, latitude: { not: null }, longitude: { not: null } }, select: { id: true, latitude: true, longitude: true, name: true } });
-  const inspectors = await db.user.findMany({ where: { workspaceId: user.workspaceId, active: true, role: { code: "INSPECTOR" }, latitude: { not: null }, longitude: { not: null } }, select: { id: true, latitude: true, longitude: true } });
-  const distance = (lat: number, lon: number, otherLat: number, otherLon: number) => {
-    const radians = (degrees: number) => degrees * Math.PI / 180;
-    const a = Math.sin(radians(otherLat - lat) / 2) ** 2 + Math.cos(radians(lat)) * Math.cos(radians(otherLat)) * Math.sin(radians(otherLon - lon) / 2) ** 2;
-    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  };
-  const nearestCentre = centres.sort((a, b) => distance(body.latitude!, body.longitude!, Number(a.latitude), Number(a.longitude)) - distance(body.latitude!, body.longitude!, Number(b.latitude), Number(b.longitude)))[0];
-  const nearestInspector = inspectors.sort((a, b) => distance(body.latitude!, body.longitude!, Number(a.latitude), Number(a.longitude)) - distance(body.latitude!, body.longitude!, Number(b.latitude), Number(b.longitude)))[0];
+  const [nearestCentre] = await db.$queryRaw<Array<{ id: string; name: string }>>(Prisma.sql`SELECT "id", "name" FROM "TestCentre" WHERE "workspaceId" = ${user.workspaceId} AND "active" = true AND "latitude" IS NOT NULL AND "longitude" IS NOT NULL ORDER BY ST_DistanceSphere(ST_MakePoint("longitude"::double precision, "latitude"::double precision), ST_MakePoint(${body.longitude}, ${body.latitude})) LIMIT 1`);
+  const [nearestInspector] = await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT u."id" FROM "User" u JOIN "Role" r ON r."id" = u."roleId" WHERE u."workspaceId" = ${user.workspaceId} AND u."active" = true AND r."code" = 'INSPECTOR' AND u."latitude" IS NOT NULL AND u."longitude" IS NOT NULL ORDER BY ST_DistanceSphere(ST_MakePoint(u."longitude"::double precision, u."latitude"::double precision), ST_MakePoint(${body.longitude}, ${body.latitude})) LIMIT 1`);
   const referenceNo = `LM-${new Date().getFullYear()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
   const result = await db.$transaction(async (transaction) => {
     const applicant = await transaction.applicant.create({ data: { legalName: body.legalName!.trim(), registrationNo: body.registrationNo?.trim() || null, contactName: body.contactName!.trim(), email: body.email!.trim().toLowerCase(), phone: body.phone!.trim(), address: body.address!.trim(), latitude: body.latitude, longitude: body.longitude } });

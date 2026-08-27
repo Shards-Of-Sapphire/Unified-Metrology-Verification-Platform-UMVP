@@ -221,6 +221,7 @@ model Inspection {
   evidence     InspectionEvidence[]
   createdAt     DateTime         @default(now())
   @@index([officerId, status])
+  @@index([clientId])
 }
 
 model InspectionEvidence {
@@ -246,7 +247,7 @@ model Certificate {
   validFrom     DateTime
   validUntil    DateTime
   qrPayload     String            @unique
-  dataHash      String            @unique
+  dataHash      String?           @unique
   revokedAt     DateTime?
   @@index([status, validUntil])
 }
