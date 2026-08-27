@@ -183,14 +183,69 @@ Policy Queries:  <legalmetrology.doca@gov.in>
 
 The PostgreSQL model in `prisma/schema.prisma` covers department workspaces, users, roles, permissions, applicants, instruments, applications, document verification, test centres, inspections, geotagged evidence, certificates, reports, and audit events. Operational records are scoped to a `Workspace`, with indexes for role-filtered queues.
 
-Copy `.env.example` to `.env`, set `DATABASE_URL`, then run:
+Create a `.env` file in the project root and set the PostgreSQL connection string:
+
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/umvp?schema=public"
+```
+
+Replace the username, password, host, port, or database name when your local PostgreSQL setup differs. The `.env` file is ignored by Git and must be recreated on a new machine.
+
+For the first setup, run:
 
 ```bash
 npm install
 npm run db:generate
 npm run db:migrate -- --name initial
+npm run db:seed
+```
+
+The seed creates the demo workspace, roles, permissions, and accounts. Use `ChangeMe123!` as the password for these demo users:
+
+```text
+admin@umvp.gov.in
+lmo@umvp.gov.in
+inspector@umvp.gov.in
+applicant@umvp.gov.in
+```
+
+To run the frontend and backend again after closing VS Code or the terminal, make sure PostgreSQL is running, open a terminal in the project root, and run:
+
+```bash
+npm run dev
+```
+
+Then open http://localhost:3000/login. `npm run dev` keeps running while the app is being used; stop it with `Ctrl+C` and start it again with the same command later. The login flow and Applications API are connected to PostgreSQL. The remaining workflow screens currently use prototype display data and can be connected to Prisma one module at a time.
+
+### Inspecting PostgreSQL
+
+For a visual database browser, run this in a second terminal:
+
+```bash
 npm run db:studio
 ```
+
+Then open http://localhost:5555. Select tables such as `User`, `Application`, `Inspection`, `Certificate`, and `Report` to view their records. Stop Prisma Studio with `Ctrl+C`.
+
+To inspect the database from the PostgreSQL terminal instead:
+
+```bash
+psql -U postgres -d umvp
+```
+
+Inside `psql`, use:
+
+```sql
+\conninfo
+\dt
+SELECT * FROM "User";
+SELECT * FROM "Application";
+SELECT * FROM "Inspection";
+SELECT * FROM "Certificate";
+\q
+```
+
+The double quotes are required because Prisma created the table names with capital letters. Update the `psql` username or database name when your local PostgreSQL setup differs.
 
 Authentication resolves the signed-in user and workspace on the server. API handlers should derive `workspaceId` from the session, check `RolePermission`, and include the workspace in every query. Never accept a workspace or role from browser input. Passwords are stored as salted scrypt hashes in `passwordHash`; change the seeded password before deployment. Write `AuditEvent` records in the same transaction as status changes. Seed demo users with `npm run db:seed`.
 
