@@ -2,6 +2,25 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 
+type Submission = {
+  legalName?: string;
+  registrationNo?: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  serialNumber?: string;
+  category?: string;
+  serviceType?: string;
+  clientId?: string;
+};
+
+function validCoordinate(value: unknown, min: number, max: number) {
+  return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
+}
+
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
@@ -13,4 +32,40 @@ export async function GET() {
   });
 
   return NextResponse.json(applications);
+}
+
+export async function POST(request: Request) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+
+  const body = await request.json() as Submission;
+  const required = [body.legalName, body.contactName, body.email, body.phone, body.address, body.serialNumber, body.category, body.serviceType];
+  if (required.some((value) => typeof value !== "string" || !value.trim()) || !validCoordinate(body.latitude, -90, 90) || !validCoordinate(body.longitude, -180, 180)) {
+    return NextResponse.json({ error: "Complete applicant, instrument, and location details are required." }, { status: 400 });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email!)) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+
+  if (body.clientId) {
+    const existing = await db.inspection.findFirst({ where: { clientId: body.clientId, application: { workspaceId: user.workspaceId } }, include: { application: true } });
+    if (existing) return NextResponse.json({ application: existing.application, inspection: existing, replayed: true }, { status: 200 });
+  }
+
+  const centres = await db.testCentre.findMany({ where: { workspaceId: user.workspaceId, active: true, latitude: { not: null }, longitude: { not: null } }, select: { id: true, latitude: true, longitude: true, name: true } });
+  const inspectors = await db.user.findMany({ where: { workspaceId: user.workspaceId, active: true, role: { code: "INSPECTOR" }, latitude: { not: null }, longitude: { not: null } }, select: { id: true, latitude: true, longitude: true } });
+  const distance = (lat: number, lon: number, otherLat: number, otherLon: number) => {
+    const radians = (degrees: number) => degrees * Math.PI / 180;
+    const a = Math.sin(radians(otherLat - lat) / 2) ** 2 + Math.cos(radians(lat)) * Math.cos(radians(otherLat)) * Math.sin(radians(otherLon - lon) / 2) ** 2;
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+  const nearestCentre = centres.sort((a, b) => distance(body.latitude!, body.longitude!, Number(a.latitude), Number(a.longitude)) - distance(body.latitude!, body.longitude!, Number(b.latitude), Number(b.longitude)))[0];
+  const nearestInspector = inspectors.sort((a, b) => distance(body.latitude!, body.longitude!, Number(a.latitude), Number(a.longitude)) - distance(body.latitude!, body.longitude!, Number(b.latitude), Number(b.longitude)))[0];
+  const referenceNo = `LM-${new Date().getFullYear()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  const result = await db.$transaction(async (transaction) => {
+    const applicant = await transaction.applicant.create({ data: { legalName: body.legalName!.trim(), registrationNo: body.registrationNo?.trim() || null, contactName: body.contactName!.trim(), email: body.email!.trim().toLowerCase(), phone: body.phone!.trim(), address: body.address!.trim(), latitude: body.latitude, longitude: body.longitude } });
+    const instrument = await transaction.instrument.upsert({ where: { serialNumber: body.serialNumber!.trim() }, update: { category: body.category!.trim() }, create: { serialNumber: body.serialNumber!.trim(), category: body.category!.trim() } });
+    const application = await transaction.application.create({ data: { referenceNo, workspaceId: user.workspaceId, applicantId: applicant.id, submittedById: user.id, instrumentId: instrument.id, status: nearestInspector ? "SCHEDULED" : "SUBMITTED", serviceType: body.serviceType!.trim(), submittedAt: new Date(), dueAt: nearestInspector ? new Date(Date.now() + 48 * 60 * 60 * 1000) : null, applicantLatitude: body.latitude, applicantLongitude: body.longitude } });
+    const inspection = nearestInspector ? await transaction.inspection.create({ data: { applicationId: application.id, officerId: nearestInspector.id, testCentreId: nearestCentre?.id, scheduledAt: new Date(Date.now() + 48 * 60 * 60 * 1000), clientId: body.clientId, syncedAt: new Date() } }) : null;
+    return { application, inspection, assignedCentre: nearestCentre?.name ?? null };
+  });
+  return NextResponse.json(result, { status: 201 });
 }

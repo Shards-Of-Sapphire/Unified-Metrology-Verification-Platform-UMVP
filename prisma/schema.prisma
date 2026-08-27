@@ -82,6 +82,8 @@ model User {
   phone         String?
   passwordHash  String
   active        Boolean        @default(true)
+  latitude      Decimal?       @db.Decimal(9, 6)
+  longitude     Decimal?       @db.Decimal(9, 6)
   applications Application[]   @relation("ApplicantApplications")
   assigned      Inspection[]   @relation("AssignedInspections")
   reviewed      Inspection[]   @relation("ReviewedInspections")
@@ -129,6 +131,8 @@ model Applicant {
   email         String
   phone         String
   address       String
+  latitude      Decimal?       @db.Decimal(9, 6)
+  longitude     Decimal?       @db.Decimal(9, 6)
   applications Application[]
   createdAt     DateTime      @default(now())
 }
@@ -159,6 +163,8 @@ model Application {
   serviceType    String
   submittedAt    DateTime?
   dueAt          DateTime?
+  applicantLatitude  Decimal? @db.Decimal(9, 6)
+  applicantLongitude Decimal? @db.Decimal(9, 6)
   documents      ApplicationDocument[]
   assignments    Inspection[]
   certificate    Certificate?
@@ -187,6 +193,8 @@ model TestCentre {
   accreditationNo String      @unique
   address       String
   active        Boolean      @default(true)
+  latitude      Decimal?       @db.Decimal(9, 6)
+  longitude     Decimal?       @db.Decimal(9, 6)
   inspections   Inspection[]
 }
 
@@ -204,6 +212,10 @@ model Inspection {
   scheduledAt   DateTime
   startedAt     DateTime?
   completedAt   DateTime?
+  clientId      String?
+  clientUpdatedAt DateTime?
+  syncedAt      DateTime?
+  syncVersion   Int            @default(1)
   observations  String?
   passed        Boolean?
   evidence     InspectionEvidence[]
@@ -234,6 +246,7 @@ model Certificate {
   validFrom     DateTime
   validUntil    DateTime
   qrPayload     String            @unique
+  dataHash      String            @unique
   revokedAt     DateTime?
   @@index([status, validUntil])
 }
