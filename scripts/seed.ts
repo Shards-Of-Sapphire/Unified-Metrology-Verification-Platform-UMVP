@@ -1,4 +1,4 @@
-import { randomBytes, scryptSync } from "node:crypto";
+import { createHash, randomBytes, scryptSync } from "node:crypto";
 import { PrismaClient, RoleCode } from "@prisma/client";
 
 const db = new PrismaClient();
@@ -67,7 +67,12 @@ async function main() {
   }
   const certificateData = [["LM-24081", "LM-2026-000184"], ["LM-24064", "LM-2026-000183"], ["LM-24078", "LM-2026-000177"]] as const;
   for (const [referenceNo, certificateNo] of certificateData) {
-    await db.certificate.upsert({ where: { certificateNo }, update: {}, create: { certificateNo, applicationId: applications.get(referenceNo)!, issuerId: lmo.id, validFrom: new Date("2026-08-25T00:00:00.000Z"), validUntil: new Date("2027-08-25T00:00:00.000Z"), qrPayload: `https://umvp.gov.in/verify/${certificateNo}` } });
+    const applicationId = applications.get(referenceNo)!;
+    const validFrom = new Date("2026-08-25T00:00:00.000Z");
+    const validUntil = new Date("2027-08-25T00:00:00.000Z");
+    const qrPayload = `https://umvp.gov.in/verify/${certificateNo}`;
+    const dataHash = createHash("sha256").update(JSON.stringify({ certificateNo, applicationId, validFrom: validFrom.toISOString(), validUntil: validUntil.toISOString(), qrPayload })).digest("hex");
+    await db.certificate.upsert({ where: { certificateNo }, update: { dataHash }, create: { certificateNo, applicationId, issuerId: lmo.id, validFrom, validUntil, qrPayload, dataHash } });
   }
   const reportData = [["PENDENCY", "reports/pendency.pdf"], ["CERTIFICATE_ACTIVITY", "reports/certificates-august.pdf"], ["INSPECTION_PERFORMANCE", "reports/inspection-performance.pdf"]] as const;
   for (const [type, fileKey] of reportData) {
