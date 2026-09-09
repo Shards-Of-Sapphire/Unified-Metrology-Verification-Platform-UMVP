@@ -1,266 +1,171 @@
-# UMVP: Unified Metrology Verification Portal
+# ⚖️ UMVP — Unified Metrology Verification Portal
+
+<div align="center">
+  <h3>Department of Legal Metrology • Government of India</h3>
+  <p><b>National Platform for Verification, Calibration, Inspection & Digital Certification of Weights and Measures</b></p>
+</div>
+
+---
 
 ## 📋 Overview
 
-**UMVP (Unified Metrology Verification Portal)** is a secure, web-based platform developed for the Legal Metrology Department under the **Ministry of Consumer Affairs, Food & Public Distribution**. It digitizes the end-to-end workflow mandated by the **Legal Metrology Act, 2009**, replacing manual verification processes with automated scheduling, digital inspections, and QR-enabled certification.
+**UMVP (Unified Metrology Verification Portal)** is a digital government portal for the Department of Legal Metrology (Weights & Measures Directorate, Ministry of Consumer Affairs, India). It provides a unified, secure, tamper-evident ecosystem connecting Citizens, Government Approved Test Centres (GATC), Legal Metrology Officers (LMO), and State Controllers.
 
-## 🎯 Purpose
+### Key Capabilities
+- 📜 **Tamper-Evident Digital Certificates**: Generated with SHA-256 HMAC digital signatures and high-density scannable QR codes.
+- 📱 **Mobile QR Code Verification**: Dynamic network IP detection (`/api/server-info`) allows mobile devices on the same Wi-Fi network to scan QR codes on printed or digital certificates to verify authenticity instantly (`http://<LAN_IP>:3000/?verify=<CERT_ID>`).
+- 👥 **Multi-Role Portals**: Role-based access control (RBAC) tailored for Citizens, GATC Laboratories, LMO Field Officers, and State Controllers.
+- 🔐 **End-to-End Encrypted Messaging (E2EE)**: Secure messaging between enforcement officers, laboratories, and applicants.
+- 🤖 **AI Metrology Assistant**: Embedded AI assistant powered by LLM for rule references (Legal Metrology Rules 2011), tolerance calculations, and compliance guidance.
+- 🛡️ **DPDP / GDPR Compliance**: Integrated data privacy controls, consent logs, data export, and audit trails.
+- 🔄 **Hybrid Database Engine**: Dual-mode data access using PostgreSQL with Drizzle ORM, with seamless fallback to an in-memory database when offline.
 
-To improve transparency, efficiency, and ease of compliance within the Legal Metrology ecosystem by providing a unified digital platform for:
+---
 
-- Online registration & verification applications
-- Automated scheduling & allocation to Legal Metrology Officers (LMOs)
-- Digital inspection recording & certificate generation
-- Centralized tracking of instrument validity across jurisdictions
-- Mobile-enabled field verification activities
+## 🛠️ Technology Stack
 
-## 🏛️ Key Stakeholders
+| Layer | Technologies |
+| :--- | :--- |
+| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons |
+| **PDF & QR Generation** | `jsPDF`, `html2canvas`, `qrcode` |
+| **Backend API** | Node.js, Express.js, TypeScript (`tsx` runner) |
+| **Database & ORM** | PostgreSQL, Drizzle ORM, In-Memory Standby DB Fallback |
+| **Cryptography** | Crypto API (HMAC SHA-256), Web Crypto E2EE |
+| **AI Integration** | Google Gemini API / Custom LLM Assistant |
 
-- **Department of Consumer Affairs (DoCA)** – Central administration
-- **State Legal Metrology Departments** – State-level enforcement
-- **Legal Metrology Officers (LMOs)** – Inspection & verification officers
-- **Government Approved Test Centres (GATCs)** – Authorized testing facilities
-- **Instrument Users** – Businesses & individuals requiring verification
+---
 
-## ✨ Core Features
+## 👥 Multi-Role Portal Architecture
 
-### **Workflow Automation**
-
-- Online application submission for verification/re-verification
-- Automated scheduling & allocation to nearest available LMO/GATC
-- Re-verification reminders & expiry alerts
-
-### **Digital Certification**
-
-- QR-enabled digital verification certificates
-- Tamper-proof certificate authentication system
-- Centralized repository accessible to regulators & consumers
-
-### **Field Operations**
-
-- Mobile application for LMOs with offline capability
-- Geotagged photo uploads & digital observation recording
-- Real-time sync of field data
-
-### **Monitoring & Compliance**
-
-- Role-based dashboards for users, LMOs, GATCs, and administrators
-- Real-time pendency tracking & enforcement monitoring
-- Analytics & report generation
-
-## 🛠️ Tech Stack (Proposed)
-
-### **Frontend**
-
-- **Next.js 14+** – React framework with App Router
-- **TypeScript** – Type safety & maintainability
-- **Tailwind CSS** – Utility-first styling
-- **Shadcn/ui** – Accessible component library
-
-### **Backend**
-
-- **Python FastAPI** – High-performance API framework
-- **PostgreSQL** – Primary database for relational integrity
-- **Redis** – Caching & session management
-
-### **Mobile**
-
-- **React Native** – Cross-platform mobile application
-- **Expo** – Development & deployment framework
-
-### **DevOps & Infrastructure**
-
-- **Docker** – Containerization
-- **Kubernetes** – Orchestration & scaling
-- **Nginx** – Reverse proxy & load balancing
-- **Digital Ocean/AWS/GCP** – Cloud deployment
-
-## 🗂️ Project Structure
-
-UMVP is built as a Next.js application using the App Router, with a structure designed for scalability, clear separation of concerns, and production deployment.
-
-```text
-umvp-core/
-├── .github/                   # CI/CD workflows (GitHub Actions)
-├── prisma/                    # Database ORM configuration
-│   ├── schema.prisma          # Database schema (PostgreSQL)
-│   └── migrations/            # SQL migration history
-├── public/                    # Static assets (logos, QR placeholders, etc.)
-├── src/
-│   ├── app/                   # Next.js App Router (Pages & Layouts)
-│   │   ├── (auth)/            # Authentication routes (login, register)
-│   │   ├── (dashboard)/       # Protected dashboard routes
-│   │   │   ├── lmo/           # Legal Metrology Officer dashboard
-│   │   │   ├── gatc/          # Gov. Approved Test Centre dashboard
-│   │   │   ├── admin/         # Ministry/Admin dashboard
-│   │   │   └── user/          # Instrument user dashboard
-│   │   ├── api/               # Next.js API Routes (Backend logic)
-│   │   │   ├── applications/  # Application submission & tracking
-│   │   │   ├── certificates/  # QR & Certificate generation
-│   │   │   ├── inspections/   # Verification reporting
-│   │   │   └── webhooks/      # External integrations
-│   │   ├── verify/[id]/       # Public certificate verification route
-│   │   ├── layout.tsx         # Root layout
-│   │   └── page.tsx           # Landing page
-│   ├── components/            # Reusable React components
-│   │   ├── ui/                # Base UI components (Shadcn/Tailwind)
-│   │   ├── forms/             # Application & inspection forms
-│   │   ├── layout/            # Navigation, sidebars, headers
-│   │   └── certificates/      # Certificate rendering components
-│   ├── lib/                   # Utility functions & configuration
-│   │   ├── db.ts              # Prisma client instantiation
-│   │   ├── auth.ts            # NextAuth/Lucia configuration
-│   │   ├── qrcode.ts          # QR generation utility
-│   │   └── utils.ts           # General helpers (Tailwind merge, etc.)
-│   ├── services/              # External service integrations
-│   │   ├── sms.ts             # SMS alerts (Govt SMS gateway)
-│   │   └── email.ts           # Email notifications
-│   └── types/                 # TypeScript interfaces and types
-│       └── index.ts           # Global type definitions
-├── scripts/                   # Utility scripts (seed DB, generate docs)
-├── docker/                    # Containerization configuration
-│   ├── Dockerfile             # Production build instructions
-│   └── docker-compose.yml     # Local development environment (DB, Redis)
-├── .env.example               # Environment variables template
-├── next.config.mjs            # Next.js configuration
-├── tailwind.config.ts         # Tailwind CSS configuration
-├── tsconfig.json              # TypeScript configuration
-└── package.json               # Dependencies and scripts
+```
+                                  ┌─────────────────────────────┐
+                                  │      UMVP Gateway Portal    │
+                                  └──────────────┬──────────────┘
+                                                 │
+          ┌──────────────────────┬───────────────┴──────────────┬──────────────────────┐
+          ▼                      ▼                              ▼                      ▼
+┌──────────────────┐   ┌──────────────────┐           ┌──────────────────┐   ┌──────────────────┐
+│  Citizen Portal  │   │   GATC Portal    │           │    LMO Portal    │   │ Controller Portal│
+│                  │   │  (Lab Verifier)  │           │  (Field Inspector)│  │ (Admin Dashboard)│
+├──────────────────┤   ├──────────────────┤           ├──────────────────┤   ├──────────────────┤
+│ • My Equipment   │   │ • Lab Tests      │           │ • Field Audits   │   │ • Analytics      │
+│ • Applications   │   │ • Verification   │           │ • GPS / Photos   │   │ • Fraud Alerts   │
+│ • Download PDFs  │   │ • Batch Issue    │           │ • Revocation     │   │ • DB Explorer    │
+│ • QR Test & Scan │   │ • Calibration    │           │ • Inspection Logs│   │ • Audit Trails   │
+└──────────────────┘   └──────────────────┘           └──────────────────┘   └──────────────────┘
 ```
 
-## 🔧 Getting Started
+### 1. 🙋‍♂️ Citizen Portal
+- View all registered weights, measures, weighing scales, and dispensing pumps.
+- Track application status in real-time (Submitted, Under Test, Approved, Issued).
+- Download official **Certificate of Verification** in high-resolution PDF format.
+- Submit grievances and complaints for non-compliant commercial scales or short-weighting.
+
+### 2. 🧪 GATC Laboratory Portal (Government Approved Test Centre)
+- Receive equipment for secondary and working standard calibration.
+- Record calibration data, error margins, and standard weight comparisons.
+- Electronically sign and issue **Verification Certificates** with HMAC cryptographic protection.
+
+### 3. 🔍 LMO Portal (Legal Metrology Officer)
+- Field enforcement dashboard for on-site inspection of commercial establishments.
+- Inspect traders, fuel stations, supermarkets, and industrial weighbridges.
+- Capture geotagged inspection evidence, photo logs, and equipment serial numbers.
+- Issue compliance certificates or place rejection seals on uncalibrated devices.
+
+### 4. 👑 State Controller & Central Admin Portal
+- Executive dashboard with state-wide compliance statistics.
+- Automated anomaly & fraud detection alerts (e.g., duplicate serial numbers, tampered seals).
+- Database Explorer with raw table views and query execution.
+- User management, role permissions, and full regulatory audit trails.
+
+---
+
+## 🔒 Cryptographic Verification & Mobile QR System
+
+```
+[ Certificate Generated ] ──► [ HMAC-SHA256 Signature Calculated ]
+                                              │
+                                              ▼
+[ Mobile Phone Scans QR ] ◄─── [ Dynamic LAN IP QR Code Embed ]
+            │
+            ▼
+[ URL: http://192.168.x.x:3000/?verify=CERT-2026-X89K ]
+            │
+            ▼
+[ Portal Opens Public Verifier & Auto-Validates Digital Signature ]
+```
+
+1. **HMAC Signature Creation**: Every certificate receives a unique SHA-256 HMAC signature derived from its certificate number, serial number, validity date, and issuing officer credentials.
+2. **Network IP Resolution**: The server runs an IP auto-detection service (`GET /api/server-info`) that returns the host machine's Wi-Fi / Local Area Network IP address (`http://192.168.x.x:3000`).
+3. **Dynamic QR Code**: The QR code on both the modal screen and downloaded PDF embeds the LAN URL. When scanned by any smartphone on the local network, it opens the **Public Verifier** view and confirms authenticity automatically.
+
+---
+
+## 📡 API Endpoints Summary
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/server-info` | Returns local LAN IP and base URL for QR code generation |
+| `GET` | `/api/health` | Service health check |
+| `GET` | `/api/certificates` | Fetch verification certificates (DB or standby memory fallback) |
+| `POST` | `/api/certificates/issue` | Issue a new verification certificate with HMAC signature |
+| `GET` | `/api/verify/:certificateNumber` | Public verification API endpoint |
+| `GET` | `/api/db/browser` | Admin database browser & table inspector |
+| `GET/POST` | `/api/e2ee/messages` | Encrypted messaging endpoints |
+
+---
+
+## 🚀 Getting Started & Running Locally
 
 ### Prerequisites
+- **Node.js** (v18 or higher recommended)
+- **npm** or **yarn**
 
-- Node.js 18+ & npm
-- Python 3.10+
-- Docker & Docker Compose
-- PostgreSQL 14+
+### Quick Setup
 
-### Development Setup
+1. **Clone the repository & install dependencies**:
+   ```bash
+   git clone <repository-url>
+   cd umvp---unified-metrology-verification-portal
+   npm install
+   ```
 
-```bash
-# Clone the repository
-git clone https://github.com/DoCA/UMVP-Core.git
+2. **Configure Environment Variables** (Optional for local development):
+   Create or edit `.env.local` in the project root:
+   ```env
+   PORT=3000
+   NODE_ENV=development
+   GEMINI_API_KEY=your_gemini_api_key_here
+   # DATABASE_URL=postgresql://user:password@localhost:5432/umvp_db
+   ```
+   *Note: If PostgreSQL is not configured or offline, UMVP automatically runs in **Standby Memory Database** mode with pre-populated demo data.*
 
-# Install dependencies
-npm install
+3. **Start the Development Server**:
+   ```bash
+   npm run dev
+   ```
 
-# Start development environment
-docker-compose up -d
+4. **Access the Portal**:
+   - Open your browser at `http://localhost:3000`
+   - Use the **One-Click Demo Logins** at the bottom of the landing page:
+     - 🙋 **Citizen Demo**: `Rahul Sharma`
+     - 🧪 **GATC Lab Demo**: `National Metrology Lab (GATC-DEL-01)`
+     - 🔍 **LMO Officer Demo**: `Vikram Singh (LMO-8842)`
+     - 👑 **Controller Demo**: `Dr. A. K. Verma (State Controller)`
 
-# Run migrations
-npm run db:migrate
+---
 
-# Start development server
-npm run dev
-```
+## 🧪 Testing Mobile QR Verification
 
-📄 Legal Framework
-This system complies with:
+1. Log in as **Citizen (Rahul Sharma)**.
+2. Click **View Certificate** on any active verification card.
+3. Observe the generated **QR Code** at the bottom of the certificate.
+4. Scan the QR code using your smartphone camera (ensure your phone is connected to the same Wi-Fi network as your host computer).
+5. The phone will navigate directly to `http://<YOUR_LAN_IP>:3000/?verify=CERT-...` and display the **Authenticity Verified** badge.
 
-The Legal Metrology Act, 2009
-The Legal Metrology (General) Rules, 2011
-Digital India Initiative framework
-India Open Government Data (OGD) Policy
-📜 License
-This project is dual-licensed under:
+---
 
-MIT License – For software distribution
-India Open Government License (OGL) – For data accessibility
-See LICENSE [blocked] for complete terms.
+## 📄 License
 
-🤝 Contributing
-We welcome contributions from Government Approved Test Centres (GATCs), State Legal Metrology Departments, and authorized developers. Please see CONTRIBUTING.md [blocked] for guidelines.
-
-📞 Contact & Support
-Department: Department of Consumer Affairs (DoCA)
-Ministry: Ministry of Consumer Affairs, Food & Public Distribution
-Technical Issues: Create a GitHub Issue
-Policy Queries:  <legalmetrology.doca@gov.in>
-
-## Backend implementation
-
-The PostgreSQL model in `prisma/schema.prisma` covers department workspaces, users, roles, permissions, applicants, instruments, applications, document verification, test centres, inspections, geotagged evidence, certificates, reports, and audit events. Operational records are scoped to a `Workspace`, with indexes for role-filtered queues.
-
-Create a `.env` file in the project root and set the PostgreSQL connection string:
-
-```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/umvp?schema=public"
-```
-
-Replace the username, password, host, port, or database name when your local PostgreSQL setup differs. The `.env` file is ignored by Git and must be recreated on a new machine.
-
-For the first setup, run:
-
-```bash
-npm install
-npm run db:generate
-npm run db:migrate -- --name initial
-npm run db:seed
-```
-
-The seed creates the demo workspace, roles, permissions, and accounts. Use `ChangeMe123!` as the password for these demo users:
-
-```text
-admin@umvp.gov.in
-lmo@umvp.gov.in
-inspector@umvp.gov.in
-applicant@umvp.gov.in
-```
-
-To run the frontend and backend again after closing VS Code or the terminal, make sure PostgreSQL is running, open a terminal in the project root, and run:
-
-```bash
-npm run dev
-```
-
-Then open http://localhost:3000/login. `npm run dev` keeps running while the app is being used; stop it with `Ctrl+C` and start it again with the same command later. The login flow and Applications API are connected to PostgreSQL. The remaining workflow screens currently use prototype display data and can be connected to Prisma one module at a time.
-
-### Inspecting PostgreSQL
-
-For a visual database browser, run this in a second terminal:
-
-```bash
-npm run db:studio
-```
-
-Then open http://localhost:5555. Select tables such as `User`, `Application`, `Inspection`, `Certificate`, and `Report` to view their records. Stop Prisma Studio with `Ctrl+C`.
-
-To inspect the database from the PostgreSQL terminal instead:
-
-```bash
-psql -U postgres -d umvp
-```
-
-Inside `psql`, use:
-
-```sql
-\conninfo
-\dt
-SELECT * FROM "User";
-SELECT * FROM "Application";
-SELECT * FROM "Inspection";
-SELECT * FROM "Certificate";
-\q
-```
-
-The double quotes are required because Prisma created the table names with capital letters. Update the `psql` username or database name when your local PostgreSQL setup differs.
-
-Authentication resolves the signed-in user and workspace on the server. API handlers should derive `workspaceId` from the session, check `RolePermission`, and include the workspace in every query. Never accept a workspace or role from browser input. Passwords are stored as salted scrypt hashes in `passwordHash`; change the seeded password before deployment. Write `AuditEvent` records in the same transaction as status changes. Seed demo users with `npm run db:seed`.
-
-## Designing in Figma and connecting it to UMVP
-
-1. Create Figma pages for `Foundations`, `Components`, and `Screens`. Define color variables, typography, spacing, and variants first; use Auto Layout and responsive constraints for desktop and mobile frames.
-2. Name layers after implementation concepts such as `ApplicationTable`, `StatusPill`, and `CertificateLookup`. Document loading, empty, error, and permission-denied states. Figma should guide visual decisions, not replace application logic.
-3. Map screens to `/`, `/applications`, `/inspections`, `/certificates`, and `/reports`. Export only real assets to `public/`; implement layout and interactions in reusable React components.
-4. Use Figma Dev Mode for measured spacing, colors, and font properties, then compare the running page at the same viewport. Keep repeated Figma components aligned with shared React components.
-5. Connect data through server route handlers or server actions. Authorization stays in the backend; the UI receives filtered records. Keep UI status labels aligned with the Prisma enums and provide loading and empty states for every table.
-
-## Kubernetes basics
-
-Kubernetes runs the application as a group of managed containers. A `Deployment` keeps the desired number of UMVP web pods running and replaces failed pods. A `Service` gives those pods a stable internal address, while an `Ingress` exposes HTTPS traffic from the public domain. PostgreSQL should normally be a managed database, not an ephemeral pod; Kubernetes stores only the `DATABASE_URL` reference in a `Secret`. A `ConfigMap` can hold non-secret settings.
-
-The usual flow is: build the Next.js Docker image, push it to a registry, apply a Deployment and Service, create an Ingress with TLS, and run Prisma migrations as a release job before serving new code. Scale web pods horizontally when traffic rises; keep database connection pooling enabled because every pod can open connections. Use readiness probes so traffic reaches only ready pods, liveness probes to restart stuck pods, resource requests and limits, and backups/monitoring for PostgreSQL. Kubernetes does not provide application authorization: UMVP sessions, roles, permissions, and workspace filters still belong in the application and database.
-Developed by: Sapphire (A Student Innovative Collective from MJCET, Hyderabad)
-Implemented under: Digital India Initiative, Department of Consumer Affairs, Government of India
+This project is developed for the **Department of Legal Metrology, Ministry of Consumer Affairs, Government of India**.
+All rights reserved.
