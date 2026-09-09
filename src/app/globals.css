@@ -1,0 +1,61 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+@theme inline {
+  --color-navy-950: #060d1f;
+  --color-navy-900: #0d1b3e;
+  --color-navy-800: #132252;
+  --color-navy-700: #1a2d6b;
+  --color-navy-600: #1e3a8a;
+  --color-royal-600: #1d4ed8;
+  --color-royal-500: #2563eb;
+  --color-royal-400: #3b82f6;
+  --color-teal-600: #0d9488;
+  --color-teal-500: #14b8a6;
+  --color-teal-400: #2dd4bf;
+  --color-saffron-600: #ea7c12;
+  --color-saffron-500: #f97316;
+  --color-saffron-400: #fb923c;
+
+  --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+:root {
+  --sidebar-bg: #0d1b3e;
+  --sidebar-border: rgba(255,255,255,0.07);
+  --sidebar-text: rgba(255,255,255,0.6);
+  --sidebar-text-active: #ffffff;
+  --sidebar-item-active: rgba(37,99,235,0.25);
+  --sidebar-item-hover: rgba(255,255,255,0.06);
+}
+
+html, body {
+  min-height: 100%;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+body { margin: 0; background: #f8fafc; }
+
+* { box-sizing: border-box; }
+
+h1, h2, h3, h4, h5, h6 { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+.font-display { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+
+.glass-card { background: rgba(255,255,255,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.5); }
+.bg-gradient-navy { background: linear-gradient(135deg, #0d1b3e 0%, #1a2d6b 100%); }
+.bg-gradient-royal { background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%); }
+.bg-gradient-teal { background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%); }
+.bg-gradient-saffron { background: linear-gradient(135deg, #ea7c12 0%, #f97316 100%); }
+.sidebar-item { transition: background 0.15s ease, color 0.15s ease; }
+* { transition-property: none; }
+a, button, input, select, textarea { transition-property: color, background-color, border-color, box-shadow, opacity, transform; transition-duration: 150ms; transition-timing-function: ease; }
