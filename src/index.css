@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Segoe UI", sans-serif;
+  background: #020817;
+}
+
+html {
+  background: #020817;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, rgba(59, 130, 246, 0.12), transparent 28%),
+    linear-gradient(180deg, #020817 0%, #020817 100%);
+  color: #e2e8f0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.certificate-export-paper {
+  width: 794px !important;
+  min-height: 1123px !important;
+  height: auto !important;
+  flex: none !important;
+  overflow: visible !important;
+  background: #fdfcf7 !important;
+  color: #0f172a !important;
+  border-top: 6px double rgba(120, 53, 15, 0.18) !important;
+  border-right: 1px solid rgba(120, 53, 15, 0.18) !important;
+  border-bottom: 1px solid rgba(120, 53, 15, 0.18) !important;
+  border-left: 1px solid rgba(120, 53, 15, 0.18) !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12) !important;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.certificate-export-paper > * {
+  break-inside: avoid;
+}
+
+.certificate-export-paper .grid-cols-2 {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+}
+
+.certificate-export-paper img {
+  image-rendering: crisp-edges;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  html,
+  body {
+    min-width: 0;
+    background: #ffffff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .certificate-modal,
+  .certificate-modal * {
+    visibility: visible !important;
+  }
+
+  .certificate-modal {
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .certificate-modal-shell {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .certificate-toolbar {
+    display: none !important;
+  }
+
+  .certificate-paper {
+    display: block !important;
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 8mm !important;
+    background: #fffbeb !important;
+    border: 2mm double rgba(120, 53, 15, 0.2) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .certificate-paper img {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(251, 191, 36, 0.8);
+  color: #020617;
+}

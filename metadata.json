@@ -1,0 +1,6 @@
+{
+  "name": "UMVP - Unified Metrology Verification Portal",
+  "description": "Secure Legal Metrology platform featuring strict RBAC stakeholder abstraction, end-to-end encrypted communications, GDPR compliance, tamper-proof hash-chained audit trails, and AI verification.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
