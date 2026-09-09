@@ -1,5 +1,31 @@
 # UMVP: Unified Metrology Verification Portal
 
+## Run the current application
+
+The working application in this repository is the Vite + Express app under `frontend/`.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). The server provides both the UI and API; `frontend/server.ts` starts Vite in development mode and listens on port `3000`.
+
+The default screen is the Citizen Portal. To inspect the database in the UI, choose **Controller Portal**, sign in as Controller/Admin, open the **PostgreSQL DB** tab, and use **Live PostgreSQL Table Browser**. It exposes `applications`, `certificates`, `audit_ledger`, `users`, and `e2ee_messages`.
+
+Demo Controller/Admin credentials:
+
+```text
+Email: controller.hq@doca.gov.in
+Password: ChangeMe123!
+MFA: 123456
+```
+
+The database panel calls `/api/database/status` and `/api/database/tables/:tableName`. If PostgreSQL is unavailable, the server displays a standby in-memory view so the prototype remains usable; rows shown in that mode are not persisted.
+
+For a separate Prisma database browser, use `npm run db:studio` from the repository root and open [http://localhost:5555](http://localhost:5555). That command requires valid root `.env` PostgreSQL credentials.
+
 ## 📋 Overview
 
 **UMVP (Unified Metrology Verification Portal)** is a secure, web-based platform developed for the Legal Metrology Department under the **Ministry of Consumer Affairs, Food & Public Distribution**. It digitizes the end-to-end workflow mandated by the **Legal Metrology Act, 2009**, replacing manual verification processes with automated scheduling, digital inspections, and QR-enabled certification.
