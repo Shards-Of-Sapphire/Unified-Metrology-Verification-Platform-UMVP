@@ -115,3 +115,29 @@ export const e2eeMessages = pgTable('e2ee_messages', {
   isRead: text('is_read').default('false'),
   createdAt: timestamp('created_at').defaultNow(),
 });
+
+// GDPR & DPDP Consents table
+export const gdprConsents = pgTable('gdpr_consents', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  timestamp: text('timestamp').notNull(),
+  purpose: text('purpose').notNull(),
+  legalBasis: text('legal_basis').notNull().default('CONSENT'),
+  status: text('status').notNull().default('ACTIVE'),
+  ipAddress: text('ip_address').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Security Threats & Intrusion Events table
+export const securityThreats = pgTable('security_threats', {
+  id: text('id').primaryKey(),
+  timestamp: text('timestamp').notNull(),
+  threatType: text('threat_type').notNull(),
+  severity: text('severity').notNull().default('MEDIUM'),
+  actorIp: text('actor_ip').notNull(),
+  actorRole: text('actor_role'),
+  description: text('description').notNull(),
+  mitigationAction: text('mitigation_action').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+

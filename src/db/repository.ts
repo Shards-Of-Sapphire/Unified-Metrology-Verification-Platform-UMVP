@@ -1,6 +1,7 @@
 import { db } from './index.ts';
-import { users, applications, certificates, auditLedger, e2eeMessages } from './schema.ts';
-import { eq, desc, asc, and, or } from 'drizzle-orm';
+import { users, applications, certificates, auditLedger, e2eeMessages, gdprConsents, securityThreats } from './schema.ts';
+import { eq, desc, asc, and, or, sql } from 'drizzle-orm';
+
 
 // 1. Applications Repository
 export async function dbGetApplications(role?: string, userId?: string) {
@@ -183,3 +184,92 @@ export async function dbUpdateUserCredentials(uid: string, email: string, passwo
     throw new Error('Failed to update user credentials.', { cause: error });
   }
 }
+
+// 6. GDPR & DPDP Consents
+export async function dbGetGdprConsents(userId?: string) {
+  try {
+    if (userId) {
+      return await db.select().from(gdprConsents).where(eq(gdprConsents.userId, userId));
+    }
+    return await db.select().from(gdprConsents);
+  } catch (error) {
+    console.error('Database query dbGetGdprConsents failed:', error);
+    throw new Error('Failed to retrieve GDPR consent records.', { cause: error });
+  }
+}
+
+export async function dbCreateGdprConsent(data: typeof gdprConsents.$inferInsert) {
+  try {
+    const result = await db.insert(gdprConsents).values(data).returning();
+    return result[0];
+  } catch (error) {
+    console.error('Database query dbCreateGdprConsent failed:', error);
+    throw new Error('Failed to record GDPR consent.', { cause: error });
+  }
+}
+
+export async function dbAnonymizeCitizenData(userId: string) {
+  try {
+    await db.update(applications)
+      .set({
+        applicantName: 'ANONYMIZED_CITIZEN_GDPR_ART17',
+        businessName: 'ANONYMIZED_ENTERPRISE',
+        contactEmail: 'redacted@privacy.gdpr',
+        contactPhone: '+91 00000 00000',
+        maskedAadhaarOrGstin: 'REDACTED_BY_REQUEST',
+      })
+      .where(eq(applications.applicantId, userId));
+
+    await db.update(gdprConsents)
+      .set({ status: 'REVOKED' })
+      .where(eq(gdprConsents.userId, userId));
+
+    return true;
+  } catch (error) {
+    console.error(`Database anonymization failed for ${userId}:`, error);
+    throw new Error('Failed to execute right-to-erasure.', { cause: error });
+  }
+}
+
+// 7. Security Threats
+export async function dbGetSecurityThreats() {
+  try {
+    return await db.select().from(securityThreats).orderBy(desc(securityThreats.timestamp));
+  } catch (error) {
+    console.error('Database query dbGetSecurityThreats failed:', error);
+    throw new Error('Failed to retrieve security threats.', { cause: error });
+  }
+}
+
+export async function dbCreateSecurityThreat(data: typeof securityThreats.$inferInsert) {
+  try {
+    const result = await db.insert(securityThreats).values(data).returning();
+    return result[0];
+  } catch (error) {
+    console.error('Database query dbCreateSecurityThreat failed:', error);
+    throw new Error('Failed to record security threat.', { cause: error });
+  }
+}
+
+// 8. Dynamic Aggregated Analytics
+export async function dbGetAnalyticsCounts() {
+  try {
+    const [appRes, certRes, auditRes, threatRes] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(applications),
+      db.select({ count: sql<number>`count(*)::int` }).from(certificates),
+      db.select({ count: sql<number>`count(*)::int` }).from(auditLedger),
+      db.select({ count: sql<number>`count(*)::int` }).from(securityThreats),
+    ]);
+
+    return {
+      totalApplications: appRes[0]?.count || 0,
+      activeCertificates: certRes[0]?.count || 0,
+      totalAuditBlocks: auditRes[0]?.count || 0,
+      securityIncidentsBlocked: threatRes[0]?.count || 0,
+    };
+  } catch (error) {
+    console.error('Database query dbGetAnalyticsCounts failed:', error);
+    return null;
+  }
+}
+

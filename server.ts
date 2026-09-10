@@ -1,5 +1,7 @@
+import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
+
 import crypto from 'crypto';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
@@ -40,8 +42,15 @@ import {
   dbAppendAuditBlock,
   dbGetE2eeMessages,
   dbCreateE2eeMessage,
+  dbGetGdprConsents,
+  dbCreateGdprConsent,
+  dbAnonymizeCitizenData,
+  dbGetSecurityThreats,
+  dbCreateSecurityThreat,
+  dbGetAnalyticsCounts,
 } from './src/db/repository.ts';
-import { pool } from './src/db/index.ts';
+import { pool, isDbConfigured, testDbConnection } from './src/db/index.ts';
+import { initDatabase } from './src/db/init.ts';
 import { saveCertificatePdf } from './src/lib/certificate-pdf.ts';
 
 // Server-side Gemini Client with lazy initialization and required User-Agent header
@@ -389,7 +398,7 @@ function enforceRole(allowedRoles: UserRole[]) {
       const clientIp = req.ip || req.socket.remoteAddress || '127.0.0.1';
       const threatDescription = `STAKEHOLDER ABSTRACTION VIOLATION: Stakeholder '${req.user.role}' (${req.user.name}) attempted to access restricted endpoint '${req.originalUrl}' requiring [${allowedRoles.join(', ')}].`;
 
-      securityThreats.unshift({
+      const newThreat: SecurityThreatEvent = {
         id: `thr-${Date.now()}`,
         timestamp: new Date().toISOString(),
         threatType: 'UNAUTHORIZED_PORTAL_ACCESS',
@@ -398,7 +407,19 @@ function enforceRole(allowedRoles: UserRole[]) {
         actorRole: req.user.role,
         description: threatDescription,
         mitigationAction: 'Request blocked with 403 Forbidden. Stakeholder session flagged for surveillance.',
-      });
+      };
+      securityThreats.unshift(newThreat);
+
+      dbCreateSecurityThreat({
+        id: newThreat.id,
+        timestamp: newThreat.timestamp,
+        threatType: newThreat.threatType,
+        severity: newThreat.severity,
+        actorIp: newThreat.actorIp,
+        actorRole: newThreat.actorRole || null,
+        description: newThreat.description,
+        mitigationAction: newThreat.mitigationAction,
+      }).catch((e) => console.warn('Could not record security threat to DB:', e));
 
       appendAuditBlock(
         req.user.id,
@@ -1493,7 +1514,26 @@ app.post('/api/audit/verify-chain', authenticateToken, enforceRole(['CONTROLLER_
 });
 
 // 11. GDPR & DPDP Compliance Endpoints
-app.get('/api/gdpr/consents', authenticateToken, (req: AuthRequest, res: Response) => {
+app.get('/api/gdpr/consents', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const user = req.user!;
+  try {
+    const dbConsents = await dbGetGdprConsents(user.role === 'CITIZEN' ? user.id : undefined);
+    if (dbConsents && dbConsents.length > 0) {
+      return res.json({
+        consents: dbConsents.map((c) => ({
+          id: c.id,
+          userId: c.userId,
+          timestamp: c.timestamp,
+          purpose: c.purpose,
+          legalBasis: c.legalBasis as any,
+          status: c.status as any,
+          ipAddress: c.ipAddress,
+        })),
+      });
+    }
+  } catch (err) {
+    console.warn('DB GDPR fetch fallback:', err);
+  }
   return res.json({ consents: gdprConsents });
 });
 
@@ -1530,10 +1570,17 @@ app.post('/api/gdpr/export', authenticateToken, (req: AuthRequest, res: Response
   return res.json({ dossier: exportDossier });
 });
 
-app.post('/api/gdpr/erasure', authenticateToken, (req: AuthRequest, res: Response) => {
+app.post('/api/gdpr/erasure', authenticateToken, async (req: AuthRequest, res: Response) => {
   const user = req.user!;
 
-  // Anonymize user records while maintaining cryptographic verification references
+  // Anonymize user records in PostgreSQL directly
+  try {
+    await dbAnonymizeCitizenData(user.id);
+  } catch (e) {
+    console.warn('DB anonymize fallback to memory:', e);
+  }
+
+  // Anonymize memory cache
   applications.forEach((app) => {
     if (app.applicantId === user.id) {
       app.applicantName = 'ANONYMIZED_CITIZEN_GDPR_ART17';
@@ -1558,24 +1605,54 @@ app.post('/api/gdpr/erasure', authenticateToken, (req: AuthRequest, res: Respons
 });
 
 // 12. Security Threat Monitoring & Analytics
-app.get(['/api/threats', '/api/system/threats'], authenticateToken, (req: AuthRequest, res: Response) => {
+app.get(['/api/threats', '/api/system/threats'], authenticateToken, async (req: AuthRequest, res: Response) => {
   const user = req.user;
   if (user && user.role === 'CONTROLLER_ADMIN') {
+    try {
+      const dbThreats = await dbGetSecurityThreats();
+      if (dbThreats && dbThreats.length > 0) {
+        return res.json({
+          threats: dbThreats.map((t) => ({
+            id: t.id,
+            timestamp: t.timestamp,
+            threatType: t.threatType as any,
+            severity: t.severity as any,
+            actorIp: t.actorIp,
+            actorRole: t.actorRole || undefined,
+            description: t.description,
+            mitigationAction: t.mitigationAction,
+          })),
+        });
+      }
+    } catch (err) {
+      console.warn('DB threats fetch fallback:', err);
+    }
     return res.json({ threats: securityThreats });
   }
   // For non-controllers, only return threats related to their own session/IP if any
   return res.json({ threats: [] });
 });
 
-app.get(['/api/analytics', '/api/system/analytics'], authenticateToken, (req: AuthRequest, res: Response) => {
+app.get(['/api/analytics', '/api/system/analytics'], authenticateToken, async (req: AuthRequest, res: Response) => {
   const user = req.user;
+  let dynamicCounts = null;
+  try {
+    dynamicCounts = await dbGetAnalyticsCounts();
+  } catch (err) {
+    console.warn('DB analytics fetch fallback:', err);
+  }
+
+  const totalApplications = dynamicCounts?.totalApplications ?? applications.length;
+  const activeCertificates = dynamicCounts?.activeCertificates ?? certificates.length;
+  const securityIncidentsBlocked = dynamicCounts?.securityIncidentsBlocked ?? securityThreats.length;
+
   if (user && user.role === 'CONTROLLER_ADMIN') {
     return res.json({
       analytics: {
         ...SYSTEM_ANALYTICS,
-        totalApplications: applications.length,
-        activeCertificates: certificates.length,
-        securityIncidentsBlocked: securityThreats.length,
+        totalApplications,
+        activeCertificates,
+        securityIncidentsBlocked,
       },
     });
   }
@@ -1583,12 +1660,12 @@ app.get(['/api/analytics', '/api/system/analytics'], authenticateToken, (req: Au
   // Public/Citizen summary stats
   return res.json({
     analytics: {
-      totalApplications: applications.length,
-      activeCertificates: certificates.length,
-      pendingInspections: applications.filter(a => a.status !== 'CERTIFIED').length,
+      totalApplications,
+      activeCertificates,
+      pendingInspections: applications.filter((a) => a.status !== 'CERTIFIED').length,
       rejectionRatePercent: SYSTEM_ANALYTICS.rejectionRatePercent,
       averageInspectionDays: SYSTEM_ANALYTICS.averageInspectionDays,
-      securityIncidentsBlocked: securityThreats.length,
+      securityIncidentsBlocked,
       heatmaps: [],
     },
   });
@@ -1768,36 +1845,53 @@ User Query: "${message}"`;
   }
 });
 
-// Database Status Endpoint for Cloud SQL PostgreSQL monitoring
+// Database Status Endpoint for PostgreSQL monitoring
 app.get('/api/database/status', async (req, res) => {
   let isDbConnected = false;
   let dbStats = {
-    applications: 0,
-    certificates: 0,
-    auditBlocks: 0,
+    applications: applications.length,
+    certificates: certificates.length,
+    auditBlocks: auditLedger.length,
+    users: registeredUsers.size,
+    e2eeMessages: e2eeMessages.length,
   };
+  let dbVersion = 'PostgreSQL';
+  let dbName = 'umvp_db';
 
   try {
-    const apps = await dbGetApplications();
-    const certs = await dbGetCertificates();
-    const audits = await dbGetAuditLedger();
-    isDbConnected = true;
-    dbStats = {
-      applications: apps?.length || 0,
-      certificates: certs?.length || 0,
-      auditBlocks: audits?.length || 0,
-    };
+    const connCheck = await testDbConnection();
+    if (connCheck.connected) {
+      isDbConnected = true;
+      if (connCheck.version) dbVersion = connCheck.version.split(' ')[0] + ' ' + connCheck.version.split(' ')[1];
+      if (connCheck.database) dbName = connCheck.database;
+
+      const [apps, certs, audits, userCount, msgCount] = await Promise.all([
+        dbGetApplications().catch(() => []),
+        dbGetCertificates().catch(() => []),
+        dbGetAuditLedger().catch(() => []),
+        pool.query('SELECT COUNT(*)::int as count FROM users;').then((r) => r.rows[0]?.count).catch(() => 0),
+        pool.query('SELECT COUNT(*)::int as count FROM e2ee_messages;').then((r) => r.rows[0]?.count).catch(() => 0),
+      ]);
+
+      dbStats = {
+        applications: apps?.length || 0,
+        certificates: certs?.length || 0,
+        auditBlocks: audits?.length || 0,
+        users: userCount || 0,
+        e2eeMessages: msgCount || 0,
+      };
+    }
   } catch (err: any) {
     console.warn('DB status check warning:', err?.message);
   }
 
   return res.json({
-    engine: 'PostgreSQL 15 (Google Cloud SQL)',
-    region: 'asia-southeast1',
-    instance: 'ai-studio-d7d8e55d',
+    engine: `${dbVersion} (Relational Database Engine)`,
+    region: process.env.DATABASE_URL?.includes('neon.tech') ? 'cloud-neon-serverless' : (process.env.DATABASE_URL?.includes('supabase.co') ? 'cloud-supabase' : 'local-or-custom'),
+    instance: dbName,
     status: isDbConnected ? 'CONNECTED' : 'STANDBY_FALLBACK',
-    connectionMethod: 'pg.Pool (Object Configuration)',
-    tables: ['users', 'applications', 'certificates', 'audit_ledger', 'e2ee_messages'],
+    connectionMethod: process.env.DATABASE_URL ? 'DATABASE_URL (Connection String)' : 'Discrete Host Configuration',
+    tables: ['users', 'applications', 'certificates', 'audit_ledger', 'e2ee_messages', 'gdpr_consents', 'security_threats'],
     stats: dbStats,
     timestamp: new Date().toISOString(),
   });
@@ -1811,6 +1905,8 @@ app.get('/api/database/tables/:tableName', async (req: Request, res: Response) =
     audit_ledger: 'audit_ledger',
     users: 'users',
     e2ee_messages: 'e2ee_messages',
+    gdpr_consents: 'gdpr_consents',
+    security_threats: 'security_threats',
   };
 
   const { tableName } = req.params;
@@ -1830,10 +1926,10 @@ app.get('/api/database/tables/:tableName', async (req: Request, res: Response) =
       success: true,
       tableName: targetTable,
       query: `SELECT * FROM ${targetTable} LIMIT ${limit};`,
-      columns: result.fields.map(f => ({ name: f.name, dataTypeId: f.dataTypeID })),
+      columns: result.fields.map((f) => ({ name: f.name, dataTypeId: f.dataTypeID })),
       rowCount: result.rows.length,
       rows: result.rows,
-      source: 'CLOUD_SQL_POSTGRESQL',
+      source: 'POSTGRESQL_DB',
     });
   } catch (err: any) {
     console.warn(`Error querying PostgreSQL table ${targetTable}:`, err?.message);
@@ -1844,17 +1940,19 @@ app.get('/api/database/tables/:tableName', async (req: Request, res: Response) =
     else if (targetTable === 'audit_ledger') inMemoryRows = auditLedger;
     else if (targetTable === 'users') {
       inMemoryRows = [
-        { id: 'usr-cit-101', uid: 'demo-citizen-1', email: 'citizen@example.com', role: 'CITIZEN', name: 'Rajesh Sharma', phone: '+91 98765 43210' },
-        { id: 'usr-lmo-201', uid: 'demo-lmo-1', email: 'inspector.malhotra@doca.gov.in', role: 'LMO', name: 'Inspector Vikram Malhotra', badgeNumber: 'DL-LMO-4091' },
-        { id: 'usr-ctrl-301', uid: 'demo-controller-1', email: 'controller.hq@doca.gov.in', role: 'CONTROLLER_ADMIN', name: 'Dr. Alok Verma', badgeNumber: 'HQ-CTRL-001' },
+        { id: 'usr-cit-101', uid: 'usr-cit-101', email: 'rahul.sharma@apexlogistics.in', role: 'CITIZEN', name: 'Rahul Sharma', phone: '+91 98110 44552' },
+        { id: 'usr-lmo-201', uid: 'lmo-malhotra-4091', email: 'v.malhotra@doca.gov.in', role: 'LMO', name: 'Inspector Vikram Malhotra', badgeNumber: 'DL-LMO-4091' },
+        { id: 'usr-ctrl-301', uid: 'doca-controller-001', email: 'controller.skn@doca.gov.in', role: 'CONTROLLER_ADMIN', name: 'Dr. S. K. Nambiar', badgeNumber: 'DOCA-HQ-001' },
       ];
     } else if (targetTable === 'e2ee_messages') inMemoryRows = e2eeMessages;
+    else if (targetTable === 'gdpr_consents') inMemoryRows = gdprConsents;
+    else if (targetTable === 'security_threats') inMemoryRows = securityThreats;
 
     return res.json({
       success: true,
       tableName: targetTable,
       query: `SELECT * FROM ${targetTable} (standby memory view);`,
-      columns: inMemoryRows.length > 0 ? Object.keys(inMemoryRows[0]).map(name => ({ name })) : [],
+      columns: inMemoryRows.length > 0 ? Object.keys(inMemoryRows[0]).map((name) => ({ name })) : [],
       rowCount: inMemoryRows.length,
       rows: inMemoryRows,
       source: 'STANDBY_FALLBACK',
@@ -1901,6 +1999,112 @@ app.all('/api/*', (req, res) => {
 // VITE MIDDLEWARE & SERVER STARTUP
 // ==========================================
 async function startServer() {
+  console.log('🔄 Initializing UMVP Metrology Verification Engine...');
+  const dbConfigured = isDbConfigured();
+
+  if (dbConfigured) {
+    console.log('📡 Connecting to PostgreSQL Database and verifying tables...');
+    try {
+      const initRes = await initDatabase();
+      if (initRes.success) {
+        console.log(`✅ PostgreSQL Connected. Tables initialized: [${initRes.tables.join(', ')}]. Baseline data seeded: ${initRes.seeded}`);
+
+        // Hydrate in-memory state from database to ensure 100% sync
+        try {
+          const [dbApps, dbCerts, dbAudits] = await Promise.all([
+            dbGetApplications(),
+            dbGetCertificates(),
+            dbGetAuditLedger(),
+          ]);
+          if (dbApps && dbApps.length > 0) {
+            applications = dbApps.map((row) => ({
+              id: row.id,
+              applicationNumber: row.applicationNumber,
+              applicantId: row.applicantId,
+              applicantName: row.applicantName,
+              businessName: row.businessName,
+              maskedAadhaarOrGstin: row.maskedAadhaarOrGstin,
+              contactEmail: row.contactEmail,
+              contactPhone: row.contactPhone,
+              instrumentCategory: row.instrumentCategory as any,
+              modelNumber: row.modelNumber,
+              serialNumber: row.serialNumber,
+              capacityOrRange: row.capacityOrRange,
+              manufacturer: row.manufacturer,
+              installationAddress: row.installationAddress,
+              city: row.city,
+              state: row.state,
+              pincode: row.pincode,
+              status: row.status as any,
+              submissionDate: row.submissionDate,
+              allocatedLmoId: row.allocatedLmoId || undefined,
+              allocatedLmoName: row.allocatedLmoName || undefined,
+              scheduledInspectionDate: row.scheduledInspectionDate || undefined,
+              fieldNotes: row.fieldNotes || undefined,
+              inspectionGeotag: row.inspectionLatitude && row.inspectionLongitude ? {
+                latitude: parseFloat(row.inspectionLatitude),
+                longitude: parseFloat(row.inspectionLongitude),
+                timestamp: row.inspectionGeotagTimestamp || '',
+                accuracyMeters: 4.0,
+              } : undefined,
+              inspectionPhotoUrl: row.inspectionPhotoUrl || undefined,
+              certificateId: row.certificateId || undefined,
+              feesPaid: row.feesPaid === 'true',
+              gdprConsentRecorded: row.gdprConsentRecorded === 'true',
+            }));
+          }
+          if (dbCerts && dbCerts.length > 0) {
+            certificates = dbCerts.map((c) => ({
+              id: c.id,
+              certificateNumber: c.certificateNumber,
+              applicationId: c.applicationId,
+              instrumentCategory: c.instrumentCategory as any,
+              modelNumber: c.modelNumber,
+              serialNumber: c.serialNumber,
+              ownerName: c.ownerName,
+              businessName: c.businessName,
+              installationAddress: c.installationAddress,
+              issuingLmoId: c.issuingLmoId,
+              issuingLmoName: c.issuingLmoName,
+              issuingLmoBadge: c.issuingLmoBadge,
+              jurisdiction: c.jurisdiction,
+              issuedAt: c.issuedAt,
+              validUntil: c.validUntil,
+              sealNumber: c.sealNumber,
+              hmacSignature: c.hmacSignature,
+              qrPayload: c.qrPayload,
+              tamperProofHash: c.tamperProofHash,
+              status: c.status as any,
+            }));
+          }
+          if (dbAudits && dbAudits.length > 0) {
+            auditLedger = dbAudits.map((b) => ({
+              index: b.blockIndex,
+              timestamp: b.timestamp,
+              actorId: b.actorId,
+              actorRole: b.actorRole as any,
+              action: b.action,
+              resourceType: b.resourceType,
+              resourceId: b.resourceId,
+              ipAddress: b.ipAddress || '127.0.0.1',
+              details: b.details,
+              previousHash: b.previousHash,
+              hash: b.hash,
+            }));
+          }
+        } catch (e) {
+          console.warn('Initial hydration notice:', e);
+        }
+      } else {
+        console.warn(`⚠️ PostgreSQL connection warning: ${initRes.message}`);
+      }
+    } catch (dbErr: any) {
+      console.warn(`⚠️ PostgreSQL connection error: ${dbErr?.message}`);
+    }
+  } else {
+    console.log('ℹ️ No DATABASE_URL or SQL credentials configured. Running in Standby Database mode.');
+  }
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -1916,7 +2120,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`UMVP Secure Server listening on port ${PORT} at 0.0.0.0`);
+    console.log(`⚖️ UMVP Secure Server listening on port ${PORT} at http://0.0.0.0:${PORT}`);
   });
 }
 

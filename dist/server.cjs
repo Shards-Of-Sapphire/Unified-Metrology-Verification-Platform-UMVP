@@ -26,9 +26,10 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // server.ts
+var import_config2 = require("dotenv/config");
 var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
-var import_crypto = __toESM(require("crypto"), 1);
+var import_crypto2 = __toESM(require("crypto"), 1);
 var import_fs = __toESM(require("fs"), 1);
 var import_vite = require("vite");
 var import_genai = require("@google/genai");
@@ -296,6 +297,7 @@ var SYSTEM_ANALYTICS = {
 };
 
 // src/db/index.ts
+var import_config = require("dotenv/config");
 var import_node_postgres = require("drizzle-orm/node-postgres");
 var import_pg = require("pg");
 
@@ -306,6 +308,8 @@ __export(schema_exports, {
   auditLedger: () => auditLedger,
   certificates: () => certificates,
   e2eeMessages: () => e2eeMessages,
+  gdprConsents: () => gdprConsents,
+  securityThreats: () => securityThreats,
   users: () => users
 });
 var import_pg_core = require("drizzle-orm/pg-core");
@@ -419,26 +423,88 @@ var e2eeMessages = (0, import_pg_core.pgTable)("e2ee_messages", {
   isRead: (0, import_pg_core.text)("is_read").default("false"),
   createdAt: (0, import_pg_core.timestamp)("created_at").defaultNow()
 });
+var gdprConsents = (0, import_pg_core.pgTable)("gdpr_consents", {
+  id: (0, import_pg_core.text)("id").primaryKey(),
+  userId: (0, import_pg_core.text)("user_id").notNull(),
+  timestamp: (0, import_pg_core.text)("timestamp").notNull(),
+  purpose: (0, import_pg_core.text)("purpose").notNull(),
+  legalBasis: (0, import_pg_core.text)("legal_basis").notNull().default("CONSENT"),
+  status: (0, import_pg_core.text)("status").notNull().default("ACTIVE"),
+  ipAddress: (0, import_pg_core.text)("ip_address").notNull(),
+  createdAt: (0, import_pg_core.timestamp)("created_at").defaultNow()
+});
+var securityThreats = (0, import_pg_core.pgTable)("security_threats", {
+  id: (0, import_pg_core.text)("id").primaryKey(),
+  timestamp: (0, import_pg_core.text)("timestamp").notNull(),
+  threatType: (0, import_pg_core.text)("threat_type").notNull(),
+  severity: (0, import_pg_core.text)("severity").notNull().default("MEDIUM"),
+  actorIp: (0, import_pg_core.text)("actor_ip").notNull(),
+  actorRole: (0, import_pg_core.text)("actor_role"),
+  description: (0, import_pg_core.text)("description").notNull(),
+  mitigationAction: (0, import_pg_core.text)("mitigation_action").notNull(),
+  createdAt: (0, import_pg_core.timestamp)("created_at").defaultNow()
+});
 
 // src/db/index.ts
+function isDbConfigured() {
+  return Boolean(
+    process.env.DATABASE_URL || process.env.SQL_HOST && process.env.SQL_DB_NAME && process.env.SQL_USER
+  );
+}
 var createPool = () => {
   if (!global._postgresPool) {
-    global._postgresPool = new import_pg.Pool({
-      host: process.env.SQL_HOST,
-      user: process.env.SQL_USER,
-      password: process.env.SQL_PASSWORD,
-      database: process.env.SQL_DB_NAME,
-      max: 10,
-      connectionTimeoutMillis: 15e3
-    });
+    const connectionString = process.env.DATABASE_URL;
+    let poolConfig;
+    if (connectionString) {
+      const needsSsl = connectionString.includes("sslmode=require") || connectionString.includes("neon.tech") || connectionString.includes("supabase.co") || connectionString.includes("aivencloud.com") || connectionString.includes("render.com") || process.env.SQL_SSL === "true";
+      poolConfig = {
+        connectionString,
+        ssl: needsSsl ? { rejectUnauthorized: false } : void 0,
+        max: 10,
+        connectionTimeoutMillis: 15e3
+      };
+    } else {
+      const host = process.env.SQL_HOST || "localhost";
+      const port = parseInt(process.env.SQL_PORT || "5432", 10);
+      const user = process.env.SQL_USER || "postgres";
+      const password = process.env.SQL_PASSWORD || "";
+      const database = process.env.SQL_DB_NAME || "postgres";
+      const needsSsl = process.env.SQL_SSL === "true";
+      poolConfig = {
+        host,
+        port,
+        user,
+        password,
+        database,
+        ssl: needsSsl ? { rejectUnauthorized: false } : void 0,
+        max: 10,
+        connectionTimeoutMillis: 15e3
+      };
+    }
+    global._postgresPool = new import_pg.Pool(poolConfig);
     global._postgresPool.on("error", (err) => {
-      console.error("Unexpected error on idle SQL pool client:", err);
+      console.warn("PostgreSQL idle client notice:", err.message);
     });
   }
   return global._postgresPool;
 };
 var pool = createPool();
 var db = (0, import_node_postgres.drizzle)(pool, { schema: schema_exports });
+async function testDbConnection() {
+  try {
+    const res = await pool.query("SELECT current_database(), version();");
+    return {
+      connected: true,
+      database: res.rows[0]?.current_database,
+      version: res.rows[0]?.version
+    };
+  } catch (err) {
+    return {
+      connected: false,
+      error: err?.message || "Database connection failed"
+    };
+  }
+}
 
 // src/db/repository.ts
 var import_drizzle_orm = require("drizzle-orm");
@@ -578,6 +644,459 @@ async function dbUpdateUserCredentials(uid, email, passwordHash) {
     throw new Error("Failed to update user credentials.", { cause: error });
   }
 }
+async function dbGetGdprConsents(userId) {
+  try {
+    if (userId) {
+      return await db.select().from(gdprConsents).where((0, import_drizzle_orm.eq)(gdprConsents.userId, userId));
+    }
+    return await db.select().from(gdprConsents);
+  } catch (error) {
+    console.error("Database query dbGetGdprConsents failed:", error);
+    throw new Error("Failed to retrieve GDPR consent records.", { cause: error });
+  }
+}
+async function dbAnonymizeCitizenData(userId) {
+  try {
+    await db.update(applications).set({
+      applicantName: "ANONYMIZED_CITIZEN_GDPR_ART17",
+      businessName: "ANONYMIZED_ENTERPRISE",
+      contactEmail: "redacted@privacy.gdpr",
+      contactPhone: "+91 00000 00000",
+      maskedAadhaarOrGstin: "REDACTED_BY_REQUEST"
+    }).where((0, import_drizzle_orm.eq)(applications.applicantId, userId));
+    await db.update(gdprConsents).set({ status: "REVOKED" }).where((0, import_drizzle_orm.eq)(gdprConsents.userId, userId));
+    return true;
+  } catch (error) {
+    console.error(`Database anonymization failed for ${userId}:`, error);
+    throw new Error("Failed to execute right-to-erasure.", { cause: error });
+  }
+}
+async function dbGetSecurityThreats() {
+  try {
+    return await db.select().from(securityThreats).orderBy((0, import_drizzle_orm.desc)(securityThreats.timestamp));
+  } catch (error) {
+    console.error("Database query dbGetSecurityThreats failed:", error);
+    throw new Error("Failed to retrieve security threats.", { cause: error });
+  }
+}
+async function dbCreateSecurityThreat(data) {
+  try {
+    const result = await db.insert(securityThreats).values(data).returning();
+    return result[0];
+  } catch (error) {
+    console.error("Database query dbCreateSecurityThreat failed:", error);
+    throw new Error("Failed to record security threat.", { cause: error });
+  }
+}
+async function dbGetAnalyticsCounts() {
+  try {
+    const [appRes, certRes, auditRes, threatRes] = await Promise.all([
+      db.select({ count: import_drizzle_orm.sql`count(*)::int` }).from(applications),
+      db.select({ count: import_drizzle_orm.sql`count(*)::int` }).from(certificates),
+      db.select({ count: import_drizzle_orm.sql`count(*)::int` }).from(auditLedger),
+      db.select({ count: import_drizzle_orm.sql`count(*)::int` }).from(securityThreats)
+    ]);
+    return {
+      totalApplications: appRes[0]?.count || 0,
+      activeCertificates: certRes[0]?.count || 0,
+      totalAuditBlocks: auditRes[0]?.count || 0,
+      securityIncidentsBlocked: threatRes[0]?.count || 0
+    };
+  } catch (error) {
+    console.error("Database query dbGetAnalyticsCounts failed:", error);
+    return null;
+  }
+}
+
+// src/db/init.ts
+var import_crypto = __toESM(require("crypto"), 1);
+function hashPassword(password) {
+  return import_crypto.default.scryptSync(password, "umvp-password-salt", 64).toString("hex");
+}
+async function initDatabase() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        uid TEXT NOT NULL UNIQUE,
+        email TEXT NOT NULL,
+        password_hash TEXT,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'CITIZEN',
+        badge_number TEXT,
+        jurisdiction TEXT,
+        phone TEXT,
+        business_name TEXT,
+        gstin TEXT,
+        address TEXT,
+        city TEXT,
+        state TEXT,
+        pincode TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS applications (
+        id TEXT PRIMARY KEY,
+        application_number TEXT NOT NULL,
+        applicant_id TEXT NOT NULL,
+        applicant_name TEXT NOT NULL,
+        business_name TEXT NOT NULL,
+        masked_aadhaar_or_gstin TEXT NOT NULL,
+        contact_email TEXT NOT NULL,
+        contact_phone TEXT NOT NULL,
+        instrument_category TEXT NOT NULL,
+        model_number TEXT NOT NULL,
+        serial_number TEXT NOT NULL,
+        capacity_or_range TEXT NOT NULL,
+        manufacturer TEXT NOT NULL,
+        installation_address TEXT NOT NULL,
+        city TEXT NOT NULL,
+        state TEXT NOT NULL,
+        pincode TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'SUBMITTED',
+        submission_date TEXT NOT NULL,
+        allocated_lmo_id TEXT,
+        allocated_lmo_name TEXT,
+        scheduled_inspection_date TEXT,
+        field_notes TEXT,
+        inspection_latitude TEXT,
+        inspection_longitude TEXT,
+        inspection_geotag_timestamp TEXT,
+        inspection_photo_url TEXT,
+        certificate_id TEXT,
+        fees_paid TEXT DEFAULT 'true',
+        gdpr_consent_recorded TEXT DEFAULT 'true',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS certificates (
+        id TEXT PRIMARY KEY,
+        certificate_number TEXT NOT NULL,
+        application_id TEXT NOT NULL,
+        instrument_category TEXT NOT NULL,
+        model_number TEXT NOT NULL,
+        serial_number TEXT NOT NULL,
+        owner_name TEXT NOT NULL,
+        business_name TEXT NOT NULL,
+        installation_address TEXT NOT NULL,
+        issuing_lmo_id TEXT NOT NULL,
+        issuing_lmo_name TEXT NOT NULL,
+        issuing_lmo_badge TEXT NOT NULL,
+        jurisdiction TEXT NOT NULL,
+        issued_at TEXT NOT NULL,
+        valid_until TEXT NOT NULL,
+        seal_number TEXT NOT NULL,
+        hmac_signature TEXT NOT NULL,
+        qr_payload TEXT NOT NULL,
+        tamper_proof_hash TEXT NOT NULL,
+        pdf_data TEXT,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS audit_ledger (
+        id SERIAL PRIMARY KEY,
+        block_index INTEGER NOT NULL,
+        timestamp TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        actor_role TEXT NOT NULL,
+        action TEXT NOT NULL,
+        resource_type TEXT NOT NULL,
+        resource_id TEXT NOT NULL,
+        ip_address TEXT NOT NULL,
+        details TEXT NOT NULL,
+        previous_hash TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS e2ee_messages (
+        id TEXT PRIMARY KEY,
+        application_id TEXT NOT NULL,
+        sender_id TEXT NOT NULL,
+        sender_role TEXT NOT NULL,
+        sender_name TEXT NOT NULL,
+        recipient_id TEXT NOT NULL,
+        recipient_role TEXT NOT NULL,
+        ciphertext TEXT NOT NULL,
+        iv TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        key_id TEXT NOT NULL,
+        sent_at TEXT NOT NULL,
+        is_read TEXT DEFAULT 'false',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS gdpr_consents (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        legal_basis TEXT NOT NULL DEFAULT 'CONSENT',
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        ip_address TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS security_threats (
+        id TEXT PRIMARY KEY,
+        timestamp TEXT NOT NULL,
+        threat_type TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'MEDIUM',
+        actor_ip TEXT NOT NULL,
+        actor_role TEXT,
+        description TEXT NOT NULL,
+        mitigation_action TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    const appCountRes = await pool.query("SELECT COUNT(*)::int as count FROM applications;");
+    const count = appCountRes.rows[0]?.count || 0;
+    let seeded = false;
+    if (count === 0) {
+      console.log("\u{1F4E6} Database initialized. Seeding initial baseline metrology data...");
+      const defaultUsers = [
+        {
+          uid: "usr-cit-101",
+          email: "rahul.sharma@apexlogistics.in",
+          passwordHash: hashPassword("GovtSecure@2026"),
+          name: "Rahul Sharma",
+          role: "CITIZEN",
+          businessName: "Apex Logistics & Retail Hub",
+          gstin: "07AAACA1234F1Z5",
+          phone: "+91 98110 44552",
+          address: "Shed 14, Okhla Industrial Area Phase-III",
+          city: "New Delhi",
+          state: "Delhi NCT",
+          pincode: "110020"
+        },
+        {
+          uid: "lmo-malhotra-4091",
+          email: "v.malhotra@doca.gov.in",
+          passwordHash: hashPassword("GovtSecure@2026"),
+          name: "Inspector Vikram Malhotra",
+          role: "LMO",
+          badgeNumber: "DL-LMO-4091",
+          jurisdiction: "South Delhi Enforcement Division",
+          phone: "+91 99110 01122"
+        },
+        {
+          uid: "doca-controller-001",
+          email: "controller.skn@doca.gov.in",
+          passwordHash: hashPassword("GovtSecure@2026"),
+          name: "Dr. S. K. Nambiar",
+          role: "CONTROLLER_ADMIN",
+          badgeNumber: "DOCA-HQ-001",
+          jurisdiction: "Central Metrology Directorate (All India)"
+        },
+        {
+          uid: "gatc-lab-004",
+          email: "gatc.lab04@doca.gov.in",
+          passwordHash: hashPassword("GovtSecure@2026"),
+          name: "Er. Suresh R. Kumar (GATC #04)",
+          role: "GATC",
+          badgeNumber: "GATC-DELHI-04",
+          jurisdiction: "GATC Metrology Lab #04 (Northern Region)"
+        }
+      ];
+      for (const u of defaultUsers) {
+        await pool.query(
+          `INSERT INTO users (uid, email, password_hash, name, role, badge_number, jurisdiction, phone, business_name, gstin, address, city, state, pincode)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           ON CONFLICT (uid) DO NOTHING;`,
+          [
+            u.uid,
+            u.email,
+            u.passwordHash,
+            u.name,
+            u.role,
+            u.badgeNumber || null,
+            u.jurisdiction || null,
+            u.phone || null,
+            u.businessName || null,
+            u.gstin || null,
+            u.address || null,
+            u.city || null,
+            u.state || null,
+            u.pincode || null
+          ]
+        );
+      }
+      for (const app2 of INITIAL_APPLICATIONS) {
+        await pool.query(
+          `INSERT INTO applications (
+            id, application_number, applicant_id, applicant_name, business_name,
+            masked_aadhaar_or_gstin, contact_email, contact_phone, instrument_category,
+            model_number, serial_number, capacity_or_range, manufacturer, installation_address,
+            city, state, pincode, status, submission_date, allocated_lmo_id, allocated_lmo_name,
+            scheduled_inspection_date, field_notes, inspection_latitude, inspection_longitude,
+            inspection_geotag_timestamp, inspection_photo_url, certificate_id, fees_paid, gdpr_consent_recorded
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
+          ON CONFLICT (id) DO NOTHING;`,
+          [
+            app2.id,
+            app2.applicationNumber,
+            app2.applicantId,
+            app2.applicantName,
+            app2.businessName,
+            app2.maskedAadhaarOrGstin,
+            app2.contactEmail,
+            app2.contactPhone,
+            app2.instrumentCategory,
+            app2.modelNumber,
+            app2.serialNumber,
+            app2.capacityOrRange,
+            app2.manufacturer,
+            app2.installationAddress,
+            app2.city,
+            app2.state,
+            app2.pincode,
+            app2.status,
+            app2.submissionDate,
+            app2.allocatedLmoId || null,
+            app2.allocatedLmoName || null,
+            app2.scheduledInspectionDate || null,
+            app2.fieldNotes || null,
+            app2.inspectionGeotag?.latitude ? String(app2.inspectionGeotag.latitude) : null,
+            app2.inspectionGeotag?.longitude ? String(app2.inspectionGeotag.longitude) : null,
+            app2.inspectionGeotag?.timestamp || null,
+            app2.inspectionPhotoUrl || null,
+            app2.certificateId || null,
+            app2.feesPaid ? "true" : "false",
+            app2.gdprConsentRecorded ? "true" : "false"
+          ]
+        );
+      }
+      for (const cert of INITIAL_CERTIFICATES) {
+        await pool.query(
+          `INSERT INTO certificates (
+            id, certificate_number, application_id, instrument_category, model_number,
+            serial_number, owner_name, business_name, installation_address, issuing_lmo_id,
+            issuing_lmo_name, issuing_lmo_badge, jurisdiction, issued_at, valid_until,
+            seal_number, hmac_signature, qr_payload, tamper_proof_hash, status
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+          ON CONFLICT (id) DO NOTHING;`,
+          [
+            cert.id,
+            cert.certificateNumber,
+            cert.applicationId,
+            cert.instrumentCategory,
+            cert.modelNumber,
+            cert.serialNumber,
+            cert.ownerName,
+            cert.businessName,
+            cert.installationAddress,
+            cert.issuingLmoId,
+            cert.issuingLmoName,
+            cert.issuingLmoBadge,
+            cert.jurisdiction,
+            cert.issuedAt,
+            cert.validUntil,
+            cert.sealNumber,
+            cert.hmacSignature,
+            cert.qrPayload,
+            cert.tamperProofHash,
+            cert.status
+          ]
+        );
+      }
+      for (const b of INITIAL_AUDIT_TRAILS) {
+        await pool.query(
+          `INSERT INTO audit_ledger (
+            block_index, timestamp, actor_id, actor_role, action, resource_type,
+            resource_id, ip_address, details, previous_hash, hash
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
+          [
+            b.index,
+            b.timestamp,
+            b.actorId,
+            b.actorRole,
+            b.action,
+            b.resourceType,
+            b.resourceId,
+            b.ipAddress,
+            b.details,
+            b.previousHash,
+            b.hash
+          ]
+        );
+      }
+      for (const msg of INITIAL_E2EE_MESSAGES) {
+        await pool.query(
+          `INSERT INTO e2ee_messages (
+            id, application_id, sender_id, sender_role, sender_name,
+            recipient_id, recipient_role, ciphertext, iv, tag, key_id, sent_at, is_read
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          ON CONFLICT (id) DO NOTHING;`,
+          [
+            msg.id,
+            msg.applicationId,
+            msg.senderId,
+            msg.senderRole,
+            msg.senderName,
+            msg.recipientId,
+            msg.recipientRole,
+            msg.encryptedPayload,
+            msg.iv,
+            "auth-tag-aes-256-gcm",
+            "kid-stakeholder-e2ee-2026",
+            msg.timestamp,
+            "false"
+          ]
+        );
+      }
+      for (const c of INITIAL_GDPR_CONSENTS) {
+        await pool.query(
+          `INSERT INTO gdpr_consents (
+            id, user_id, timestamp, purpose, legal_basis, status, ip_address
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT (id) DO NOTHING;`,
+          [c.id, c.userId, c.timestamp, c.purpose, c.legalBasis, c.status, c.ipAddress]
+        );
+      }
+      for (const t of INITIAL_SECURITY_THREATS) {
+        await pool.query(
+          `INSERT INTO security_threats (
+            id, timestamp, threat_type, severity, actor_ip, actor_role, description, mitigation_action
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          ON CONFLICT (id) DO NOTHING;`,
+          [t.id, t.timestamp, t.threatType, t.severity, t.actorIp, t.actorRole || null, t.description, t.mitigationAction]
+        );
+      }
+      seeded = true;
+      console.log("\u2705 Baseline metrology database successfully seeded.");
+    }
+    const tables = [
+      "users",
+      "applications",
+      "certificates",
+      "audit_ledger",
+      "e2ee_messages",
+      "gdpr_consents",
+      "security_threats"
+    ];
+    return {
+      success: true,
+      tables,
+      seeded,
+      message: "Database schema verified and active."
+    };
+  } catch (error) {
+    console.error("Database initialization error:", error.message);
+    return {
+      success: false,
+      tables: [],
+      seeded: false,
+      message: error.message
+    };
+  }
+}
+if (process.argv[1] && (process.argv[1].endsWith("init.ts") || process.argv[1].endsWith("init.js"))) {
+  initDatabase().then((res) => {
+    console.log("Initialization result:", res);
+    process.exit(res.success ? 0 : 1);
+  });
+}
 
 // src/lib/certificate-pdf.ts
 async function saveCertificatePdf({
@@ -654,14 +1173,14 @@ var certificates2 = [
 ];
 var auditLedger2 = [...INITIAL_AUDIT_TRAILS];
 var e2eeMessages2 = [...INITIAL_E2EE_MESSAGES];
-var gdprConsents = [...INITIAL_GDPR_CONSENTS];
-var securityThreats = [...INITIAL_SECURITY_THREATS];
+var gdprConsents2 = [...INITIAL_GDPR_CONSENTS];
+var securityThreats2 = [...INITIAL_SECURITY_THREATS];
 var HMAC_SERVER_SECRET = process.env.HMAC_SECRET || "UMVP-LEGAL-METROLOGY-KEY-2026";
 function sha256(data) {
-  return import_crypto.default.createHash("sha256").update(data).digest("hex");
+  return import_crypto2.default.createHash("sha256").update(data).digest("hex");
 }
 function hmacSha256(data, secret = HMAC_SERVER_SECRET) {
-  return import_crypto.default.createHmac("sha256", secret).update(data).digest("hex");
+  return import_crypto2.default.createHmac("sha256", secret).update(data).digest("hex");
 }
 async function findCertificateByReference(idOrNumber) {
   try {
@@ -803,8 +1322,8 @@ function persistLocalState() {
     console.warn("Could not persist local application data:", error);
   }
 }
-function hashPassword(password) {
-  return import_crypto.default.scryptSync(password, "umvp-password-salt", 64).toString("hex");
+function hashPassword2(password) {
+  return import_crypto2.default.scryptSync(password, "umvp-password-salt", 64).toString("hex");
 }
 function authenticateToken(req, res, next) {
   const authHeader = req.headers["authorization"];
@@ -863,7 +1382,7 @@ function enforceRole(allowedRoles) {
     if (!allowedRoles.includes(req.user.role)) {
       const clientIp = req.ip || req.socket.remoteAddress || "127.0.0.1";
       const threatDescription = `STAKEHOLDER ABSTRACTION VIOLATION: Stakeholder '${req.user.role}' (${req.user.name}) attempted to access restricted endpoint '${req.originalUrl}' requiring [${allowedRoles.join(", ")}].`;
-      securityThreats.unshift({
+      const newThreat = {
         id: `thr-${Date.now()}`,
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
         threatType: "UNAUTHORIZED_PORTAL_ACCESS",
@@ -872,7 +1391,18 @@ function enforceRole(allowedRoles) {
         actorRole: req.user.role,
         description: threatDescription,
         mitigationAction: "Request blocked with 403 Forbidden. Stakeholder session flagged for surveillance."
-      });
+      };
+      securityThreats2.unshift(newThreat);
+      dbCreateSecurityThreat({
+        id: newThreat.id,
+        timestamp: newThreat.timestamp,
+        threatType: newThreat.threatType,
+        severity: newThreat.severity,
+        actorIp: newThreat.actorIp,
+        actorRole: newThreat.actorRole || null,
+        description: newThreat.description,
+        mitigationAction: newThreat.mitigationAction
+      }).catch((e) => console.warn("Could not record security threat to DB:", e));
       appendAuditBlock(
         req.user.id,
         req.user.role,
@@ -911,7 +1441,7 @@ app.post("/api/auth/signup", async (req, res) => {
   }
   const existing = registeredUsers.get(normalizedEmail);
   if (existing) return res.status(409).json({ error: "An account with this email address already exists. Please sign in." });
-  const id = `usr-${import_crypto.default.randomUUID()}`;
+  const id = `usr-${import_crypto2.default.randomUUID()}`;
   const trimmedPhone = typeof phone === "string" ? phone.trim() : "";
   const trimmedBusinessName = typeof businessName === "string" ? businessName.trim() : "";
   const trimmedGstin = typeof gstin === "string" ? gstin.trim().toUpperCase() : "";
@@ -923,7 +1453,7 @@ app.post("/api/auth/signup", async (req, res) => {
     id,
     name: normalizedName,
     email: normalizedEmail,
-    passwordHash: hashPassword(password),
+    passwordHash: hashPassword2(password),
     role: "CITIZEN",
     phone: trimmedPhone,
     businessName: trimmedBusinessName,
@@ -1001,9 +1531,9 @@ app.post("/api/auth/account", authenticateToken, enforceRole(["CITIZEN"]), async
     }
   }
   if (!account && req.user.id === "usr-cit-101" && currentPassword === "GovtSecure@2026") {
-    account = { id: req.user.id, name: req.user.name, email: normalizedCurrentEmail, passwordHash: hashPassword(currentPassword) };
+    account = { id: req.user.id, name: req.user.name, email: normalizedCurrentEmail, passwordHash: hashPassword2(currentPassword) };
   }
-  if (!account || hashPassword(currentPassword) !== account.passwordHash) {
+  if (!account || hashPassword2(currentPassword) !== account.passwordHash) {
     return res.status(401).json({ error: "Current password is incorrect." });
   }
   if (normalizedNewEmail !== normalizedCurrentEmail && registeredUsers.has(normalizedNewEmail)) {
@@ -1012,7 +1542,7 @@ app.post("/api/auth/account", authenticateToken, enforceRole(["CITIZEN"]), async
   const updatedAccount = {
     ...account,
     email: normalizedNewEmail,
-    passwordHash: newPassword ? hashPassword(newPassword) : account.passwordHash
+    passwordHash: newPassword ? hashPassword2(newPassword) : account.passwordHash
   };
   registeredUsers.delete(normalizedCurrentEmail);
   registeredUsers.set(normalizedNewEmail, updatedAccount);
@@ -1085,7 +1615,7 @@ app.post("/api/auth/login", async (req, res) => {
     } else if (normalizedLoginEmail) {
       const registered = registeredUsers.get(normalizedLoginEmail) || await dbGetUserByEmail(normalizedLoginEmail).catch(() => null);
       if (registered?.passwordHash) {
-        if (!password || hashPassword(password) !== registered.passwordHash) {
+        if (!password || hashPassword2(password) !== registered.passwordHash) {
           return res.status(401).json({ error: "Invalid email or password." });
         }
         const userGstin = registered.gstin || "";
@@ -1791,8 +2321,27 @@ app.post("/api/audit/verify-chain", authenticateToken, enforceRole(["CONTROLLER_
     verifiedAt: (/* @__PURE__ */ new Date()).toISOString()
   });
 });
-app.get("/api/gdpr/consents", authenticateToken, (req, res) => {
-  return res.json({ consents: gdprConsents });
+app.get("/api/gdpr/consents", authenticateToken, async (req, res) => {
+  const user = req.user;
+  try {
+    const dbConsents = await dbGetGdprConsents(user.role === "CITIZEN" ? user.id : void 0);
+    if (dbConsents && dbConsents.length > 0) {
+      return res.json({
+        consents: dbConsents.map((c) => ({
+          id: c.id,
+          userId: c.userId,
+          timestamp: c.timestamp,
+          purpose: c.purpose,
+          legalBasis: c.legalBasis,
+          status: c.status,
+          ipAddress: c.ipAddress
+        }))
+      });
+    }
+  } catch (err) {
+    console.warn("DB GDPR fetch fallback:", err);
+  }
+  return res.json({ consents: gdprConsents2 });
 });
 app.post("/api/gdpr/export", authenticateToken, (req, res) => {
   const user = req.user;
@@ -1807,7 +2356,7 @@ app.post("/api/gdpr/export", authenticateToken, (req, res) => {
     data: {
       applications: userApps,
       certificates: userCerts,
-      consentsRecorded: gdprConsents.filter((c) => c.userId === user.id),
+      consentsRecorded: gdprConsents2.filter((c) => c.userId === user.id),
       auditActivity: userAudits
     },
     exportSignature: sha256(JSON.stringify(userApps) + user.id)
@@ -1823,8 +2372,13 @@ app.post("/api/gdpr/export", authenticateToken, (req, res) => {
   );
   return res.json({ dossier: exportDossier });
 });
-app.post("/api/gdpr/erasure", authenticateToken, (req, res) => {
+app.post("/api/gdpr/erasure", authenticateToken, async (req, res) => {
   const user = req.user;
+  try {
+    await dbAnonymizeCitizenData(user.id);
+  } catch (e) {
+    console.warn("DB anonymize fallback to memory:", e);
+  }
   applications2.forEach((app2) => {
     if (app2.applicantId === user.id) {
       app2.applicantName = "ANONYMIZED_CITIZEN_GDPR_ART17";
@@ -1845,33 +2399,61 @@ app.post("/api/gdpr/erasure", authenticateToken, (req, res) => {
   );
   return res.json({ success: true, message: "All personal identifiable information has been redacted." });
 });
-app.get(["/api/threats", "/api/system/threats"], authenticateToken, (req, res) => {
+app.get(["/api/threats", "/api/system/threats"], authenticateToken, async (req, res) => {
   const user = req.user;
   if (user && user.role === "CONTROLLER_ADMIN") {
-    return res.json({ threats: securityThreats });
+    try {
+      const dbThreats = await dbGetSecurityThreats();
+      if (dbThreats && dbThreats.length > 0) {
+        return res.json({
+          threats: dbThreats.map((t) => ({
+            id: t.id,
+            timestamp: t.timestamp,
+            threatType: t.threatType,
+            severity: t.severity,
+            actorIp: t.actorIp,
+            actorRole: t.actorRole || void 0,
+            description: t.description,
+            mitigationAction: t.mitigationAction
+          }))
+        });
+      }
+    } catch (err) {
+      console.warn("DB threats fetch fallback:", err);
+    }
+    return res.json({ threats: securityThreats2 });
   }
   return res.json({ threats: [] });
 });
-app.get(["/api/analytics", "/api/system/analytics"], authenticateToken, (req, res) => {
+app.get(["/api/analytics", "/api/system/analytics"], authenticateToken, async (req, res) => {
   const user = req.user;
+  let dynamicCounts = null;
+  try {
+    dynamicCounts = await dbGetAnalyticsCounts();
+  } catch (err) {
+    console.warn("DB analytics fetch fallback:", err);
+  }
+  const totalApplications = dynamicCounts?.totalApplications ?? applications2.length;
+  const activeCertificates = dynamicCounts?.activeCertificates ?? certificates2.length;
+  const securityIncidentsBlocked = dynamicCounts?.securityIncidentsBlocked ?? securityThreats2.length;
   if (user && user.role === "CONTROLLER_ADMIN") {
     return res.json({
       analytics: {
         ...SYSTEM_ANALYTICS,
-        totalApplications: applications2.length,
-        activeCertificates: certificates2.length,
-        securityIncidentsBlocked: securityThreats.length
+        totalApplications,
+        activeCertificates,
+        securityIncidentsBlocked
       }
     });
   }
   return res.json({
     analytics: {
-      totalApplications: applications2.length,
-      activeCertificates: certificates2.length,
+      totalApplications,
+      activeCertificates,
       pendingInspections: applications2.filter((a) => a.status !== "CERTIFIED").length,
       rejectionRatePercent: SYSTEM_ANALYTICS.rejectionRatePercent,
       averageInspectionDays: SYSTEM_ANALYTICS.averageInspectionDays,
-      securityIncidentsBlocked: securityThreats.length,
+      securityIncidentsBlocked,
       heatmaps: []
     }
   });
@@ -2030,30 +2612,45 @@ User Query: "${message}"`;
 app.get("/api/database/status", async (req, res) => {
   let isDbConnected = false;
   let dbStats = {
-    applications: 0,
-    certificates: 0,
-    auditBlocks: 0
+    applications: applications2.length,
+    certificates: certificates2.length,
+    auditBlocks: auditLedger2.length,
+    users: registeredUsers.size,
+    e2eeMessages: e2eeMessages2.length
   };
+  let dbVersion = "PostgreSQL";
+  let dbName = "umvp_db";
   try {
-    const apps = await dbGetApplications();
-    const certs = await dbGetCertificates();
-    const audits = await dbGetAuditLedger();
-    isDbConnected = true;
-    dbStats = {
-      applications: apps?.length || 0,
-      certificates: certs?.length || 0,
-      auditBlocks: audits?.length || 0
-    };
+    const connCheck = await testDbConnection();
+    if (connCheck.connected) {
+      isDbConnected = true;
+      if (connCheck.version) dbVersion = connCheck.version.split(" ")[0] + " " + connCheck.version.split(" ")[1];
+      if (connCheck.database) dbName = connCheck.database;
+      const [apps, certs, audits, userCount, msgCount] = await Promise.all([
+        dbGetApplications().catch(() => []),
+        dbGetCertificates().catch(() => []),
+        dbGetAuditLedger().catch(() => []),
+        pool.query("SELECT COUNT(*)::int as count FROM users;").then((r) => r.rows[0]?.count).catch(() => 0),
+        pool.query("SELECT COUNT(*)::int as count FROM e2ee_messages;").then((r) => r.rows[0]?.count).catch(() => 0)
+      ]);
+      dbStats = {
+        applications: apps?.length || 0,
+        certificates: certs?.length || 0,
+        auditBlocks: audits?.length || 0,
+        users: userCount || 0,
+        e2eeMessages: msgCount || 0
+      };
+    }
   } catch (err) {
     console.warn("DB status check warning:", err?.message);
   }
   return res.json({
-    engine: "PostgreSQL 15 (Google Cloud SQL)",
-    region: "asia-southeast1",
-    instance: "ai-studio-d7d8e55d",
+    engine: `${dbVersion} (Relational Database Engine)`,
+    region: process.env.DATABASE_URL?.includes("neon.tech") ? "cloud-neon-serverless" : process.env.DATABASE_URL?.includes("supabase.co") ? "cloud-supabase" : "local-or-custom",
+    instance: dbName,
     status: isDbConnected ? "CONNECTED" : "STANDBY_FALLBACK",
-    connectionMethod: "pg.Pool (Object Configuration)",
-    tables: ["users", "applications", "certificates", "audit_ledger", "e2ee_messages"],
+    connectionMethod: process.env.DATABASE_URL ? "DATABASE_URL (Connection String)" : "Discrete Host Configuration",
+    tables: ["users", "applications", "certificates", "audit_ledger", "e2ee_messages", "gdpr_consents", "security_threats"],
     stats: dbStats,
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   });
@@ -2064,7 +2661,9 @@ app.get("/api/database/tables/:tableName", async (req, res) => {
     certificates: "certificates",
     audit_ledger: "audit_ledger",
     users: "users",
-    e2ee_messages: "e2ee_messages"
+    e2ee_messages: "e2ee_messages",
+    gdpr_consents: "gdpr_consents",
+    security_threats: "security_threats"
   };
   const { tableName } = req.params;
   const targetTable = allowedTables[tableName];
@@ -2082,7 +2681,7 @@ app.get("/api/database/tables/:tableName", async (req, res) => {
       columns: result.fields.map((f) => ({ name: f.name, dataTypeId: f.dataTypeID })),
       rowCount: result.rows.length,
       rows: result.rows,
-      source: "CLOUD_SQL_POSTGRESQL"
+      source: "POSTGRESQL_DB"
     });
   } catch (err) {
     console.warn(`Error querying PostgreSQL table ${targetTable}:`, err?.message);
@@ -2092,11 +2691,13 @@ app.get("/api/database/tables/:tableName", async (req, res) => {
     else if (targetTable === "audit_ledger") inMemoryRows = auditLedger2;
     else if (targetTable === "users") {
       inMemoryRows = [
-        { id: "usr-cit-101", uid: "demo-citizen-1", email: "citizen@example.com", role: "CITIZEN", name: "Rajesh Sharma", phone: "+91 98765 43210" },
-        { id: "usr-lmo-201", uid: "demo-lmo-1", email: "inspector.malhotra@doca.gov.in", role: "LMO", name: "Inspector Vikram Malhotra", badgeNumber: "DL-LMO-4091" },
-        { id: "usr-ctrl-301", uid: "demo-controller-1", email: "controller.hq@doca.gov.in", role: "CONTROLLER_ADMIN", name: "Dr. Alok Verma", badgeNumber: "HQ-CTRL-001" }
+        { id: "usr-cit-101", uid: "usr-cit-101", email: "rahul.sharma@apexlogistics.in", role: "CITIZEN", name: "Rahul Sharma", phone: "+91 98110 44552" },
+        { id: "usr-lmo-201", uid: "lmo-malhotra-4091", email: "v.malhotra@doca.gov.in", role: "LMO", name: "Inspector Vikram Malhotra", badgeNumber: "DL-LMO-4091" },
+        { id: "usr-ctrl-301", uid: "doca-controller-001", email: "controller.skn@doca.gov.in", role: "CONTROLLER_ADMIN", name: "Dr. S. K. Nambiar", badgeNumber: "DOCA-HQ-001" }
       ];
     } else if (targetTable === "e2ee_messages") inMemoryRows = e2eeMessages2;
+    else if (targetTable === "gdpr_consents") inMemoryRows = gdprConsents2;
+    else if (targetTable === "security_threats") inMemoryRows = securityThreats2;
     return res.json({
       success: true,
       tableName: targetTable,
@@ -2108,6 +2709,21 @@ app.get("/api/database/tables/:tableName", async (req, res) => {
       errorNotice: err?.message
     });
   }
+});
+app.get("/api/server-info", (req, res) => {
+  const { networkInterfaces } = require("os");
+  const nets = networkInterfaces();
+  let localIp = "127.0.0.1";
+  for (const iface of Object.values(nets)) {
+    for (const alias of iface) {
+      if (alias.family === "IPv4" && !alias.internal) {
+        localIp = alias.address;
+        break;
+      }
+    }
+    if (localIp !== "127.0.0.1") break;
+  }
+  res.json({ localIp, port: PORT, baseUrl: `http://${localIp}:${PORT}` });
 });
 app.get("/api/health", (req, res) => {
   res.json({
@@ -2122,6 +2738,108 @@ app.all("/api/*", (req, res) => {
   res.status(404).json({ error: `API endpoint not found: ${req.method} ${req.originalUrl}` });
 });
 async function startServer() {
+  console.log("\u{1F504} Initializing UMVP Metrology Verification Engine...");
+  const dbConfigured = isDbConfigured();
+  if (dbConfigured) {
+    console.log("\u{1F4E1} Connecting to PostgreSQL Database and verifying tables...");
+    try {
+      const initRes = await initDatabase();
+      if (initRes.success) {
+        console.log(`\u2705 PostgreSQL Connected. Tables initialized: [${initRes.tables.join(", ")}]. Baseline data seeded: ${initRes.seeded}`);
+        try {
+          const [dbApps, dbCerts, dbAudits] = await Promise.all([
+            dbGetApplications(),
+            dbGetCertificates(),
+            dbGetAuditLedger()
+          ]);
+          if (dbApps && dbApps.length > 0) {
+            applications2 = dbApps.map((row) => ({
+              id: row.id,
+              applicationNumber: row.applicationNumber,
+              applicantId: row.applicantId,
+              applicantName: row.applicantName,
+              businessName: row.businessName,
+              maskedAadhaarOrGstin: row.maskedAadhaarOrGstin,
+              contactEmail: row.contactEmail,
+              contactPhone: row.contactPhone,
+              instrumentCategory: row.instrumentCategory,
+              modelNumber: row.modelNumber,
+              serialNumber: row.serialNumber,
+              capacityOrRange: row.capacityOrRange,
+              manufacturer: row.manufacturer,
+              installationAddress: row.installationAddress,
+              city: row.city,
+              state: row.state,
+              pincode: row.pincode,
+              status: row.status,
+              submissionDate: row.submissionDate,
+              allocatedLmoId: row.allocatedLmoId || void 0,
+              allocatedLmoName: row.allocatedLmoName || void 0,
+              scheduledInspectionDate: row.scheduledInspectionDate || void 0,
+              fieldNotes: row.fieldNotes || void 0,
+              inspectionGeotag: row.inspectionLatitude && row.inspectionLongitude ? {
+                latitude: parseFloat(row.inspectionLatitude),
+                longitude: parseFloat(row.inspectionLongitude),
+                timestamp: row.inspectionGeotagTimestamp || "",
+                accuracyMeters: 4
+              } : void 0,
+              inspectionPhotoUrl: row.inspectionPhotoUrl || void 0,
+              certificateId: row.certificateId || void 0,
+              feesPaid: row.feesPaid === "true",
+              gdprConsentRecorded: row.gdprConsentRecorded === "true"
+            }));
+          }
+          if (dbCerts && dbCerts.length > 0) {
+            certificates2 = dbCerts.map((c) => ({
+              id: c.id,
+              certificateNumber: c.certificateNumber,
+              applicationId: c.applicationId,
+              instrumentCategory: c.instrumentCategory,
+              modelNumber: c.modelNumber,
+              serialNumber: c.serialNumber,
+              ownerName: c.ownerName,
+              businessName: c.businessName,
+              installationAddress: c.installationAddress,
+              issuingLmoId: c.issuingLmoId,
+              issuingLmoName: c.issuingLmoName,
+              issuingLmoBadge: c.issuingLmoBadge,
+              jurisdiction: c.jurisdiction,
+              issuedAt: c.issuedAt,
+              validUntil: c.validUntil,
+              sealNumber: c.sealNumber,
+              hmacSignature: c.hmacSignature,
+              qrPayload: c.qrPayload,
+              tamperProofHash: c.tamperProofHash,
+              status: c.status
+            }));
+          }
+          if (dbAudits && dbAudits.length > 0) {
+            auditLedger2 = dbAudits.map((b) => ({
+              index: b.blockIndex,
+              timestamp: b.timestamp,
+              actorId: b.actorId,
+              actorRole: b.actorRole,
+              action: b.action,
+              resourceType: b.resourceType,
+              resourceId: b.resourceId,
+              ipAddress: b.ipAddress || "127.0.0.1",
+              details: b.details,
+              previousHash: b.previousHash,
+              hash: b.hash
+            }));
+          }
+        } catch (e) {
+          console.warn("Initial hydration notice:", e);
+        }
+      } else {
+        console.warn(`\u26A0\uFE0F PostgreSQL connection warning: ${initRes.message}`);
+      }
+    } catch (dbErr) {
+      console.warn(`\u26A0\uFE0F PostgreSQL connection error: ${dbErr?.message}`);
+    }
+  } else {
+    console.log("\u2139\uFE0F No DATABASE_URL or SQL credentials configured. Running in Standby Database mode.");
+  }
   if (process.env.NODE_ENV !== "production") {
     const vite = await (0, import_vite.createServer)({
       server: { middlewareMode: true },
@@ -2136,7 +2854,7 @@ async function startServer() {
     });
   }
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`UMVP Secure Server listening on port ${PORT} at 0.0.0.0`);
+    console.log(`\u2696\uFE0F UMVP Secure Server listening on port ${PORT} at http://0.0.0.0:${PORT}`);
   });
 }
 startServer();
